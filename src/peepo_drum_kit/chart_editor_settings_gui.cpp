@@ -138,8 +138,8 @@ namespace PeepoDrumKit
 
 		enum class WidgetType : u32 {
 			Default,
-			B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox,
-			F32_TimelineScrollSensitivity, F32_ExponentialSpeed,
+			B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox, F32_DrumrollRollsPerSecond,
+			F32_TimelineScrollSensitivity, F32_ExponentialSpeed, I32_TJAFileSaveFormat,
 			I32_AudioBufferFrameSize,
 		};
 
@@ -228,6 +228,22 @@ namespace PeepoDrumKit
 							Gui::EndCombo();
 						}
 					}
+					else if (in.Widget == WidgetType::I32_TJAFileSaveFormat)
+					{
+						static constexpr cstr formatNames[] = { "Current (UTF-8 BOM, LF)", "ANSI (Shift-JIS, CRLF)" };
+						const i32 formatCount = static_cast<i32>(std::size(formatNames));
+						inOutI32->Value = std::clamp(inOutI32->Value, 0, formatCount - 1);
+						if (Gui::BeginCombo("##", formatNames[inOutI32->Value], ImGuiComboFlags_None))
+						{
+							for (i32 it = 0; it < formatCount; it++)
+							{
+								const b8 isSelected = (it == inOutI32->Value);
+								if (Gui::Selectable(formatNames[it], isSelected)) { inOutI32->Value = it; changesWereMade = true; }
+								if (isSelected) Gui::SetItemDefaultFocus();
+							}
+							Gui::EndCombo();
+						}
+					}
 					else if (in.Widget == WidgetType::I32_AudioBufferFrameSize)
 					{
 						// see AudioTestWindow::AudioEngineTabContent()
@@ -249,7 +265,14 @@ namespace PeepoDrumKit
 				}
 				else if (inOutF32 != nullptr)
 				{
-					if (in.Widget == WidgetType::F32_TimelineScrollSensitivity)
+					if (in.Widget == WidgetType::F32_DrumrollRollsPerSecond)
+					{
+						Gui::SetNextItemWidth(-1.0f);
+						changesWereMade |= Gui::InputFloat("##", &inOutF32->Value, 1.0f, 10.0f, "%.2f rolls/s");
+						if (changesWereMade)
+							inOutF32->Value = Clamp(inOutF32->Value, 0.1f, 100.0f);
+					}
+					else if (in.Widget == WidgetType::F32_TimelineScrollSensitivity)
 					{
 						Gui::SetNextItemWidth(Max(1.0f, Gui::CalcItemWidth() - ((Gui::GetFrameHeight() + style.ItemInnerSpacing.x) * 3)));
 						changesWereMade |= Gui::SliderFloat("##", &inOutF32->Value, 50.0f, 350.0f, "%.0f", ImGuiSliderFlags_None);
@@ -699,10 +722,21 @@ namespace PeepoDrumKit
 							"The name that is automatically filled in when creating a new chart."),
 
 						SettingsGui::SettingsEntry(
-							settings.General.DrumrollAutoHitBarDivision,
-							"General: Drumroll Preview Interval",
-							"The interval at which drumrolls have their hit sounds previewed at.",
-							SettingsGui::WidgetType::I32_BarDivisionComboBox),
+							settings.General.TJAFileSaveFormat,
+							"TJA: File Save Format",
+							"Select the encoding and line ending used when saving TJA files.",
+							SettingsGui::WidgetType::I32_TJAFileSaveFormat),
+
+						SettingsGui::SettingsEntry(
+							settings.General.IncludePeepoDrumKitComment,
+							"TJA: Include PeepoDrumKit Header",
+							"Include the PeepoDrumKit identification comment when saving TJA files."),
+
+						SettingsGui::SettingsEntry(
+							settings.General.DrumrollPreviewRollsPerSecond,
+							"General: Drumroll Preview Rolls per Second",
+							"The number of drumroll hit sounds previewed per second.",
+							SettingsGui::WidgetType::F32_DrumrollRollsPerSecond),
 
 						SettingsGui::SettingsEntry(
 							settings.General.DisplayTimeInSongSpace,

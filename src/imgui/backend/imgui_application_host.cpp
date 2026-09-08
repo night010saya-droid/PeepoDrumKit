@@ -7,6 +7,7 @@
 
 #include "core_io.h"
 #include "core_string.h"
+#include "core_log.h"
 #include "../src_res/resource.h"
 
 #include <d3d11.h>
@@ -497,6 +498,10 @@ namespace ApplicationHost
 
 	static void ImGuiAndUserUpdateThenRenderAndPresentFrame()
 	{
+		static u64 frameCounter = 0;
+		++frameCounter;
+		if ((frameCounter % 120) == 0)
+			Log::Write("Frame %llu", static_cast<unsigned long long>(frameCounter));
 		// update font and size
 		if (!GlobalIsWindowMinimized && GlobalSwapChainWaitableObject != NULL)
 			::WaitForSingleObjectEx(GlobalSwapChainWaitableObject, 1000, true);
@@ -573,13 +578,18 @@ namespace ApplicationHost
 
 		// TODO: Maybe handle this better somehow, not sure...
 		if (!GlobalIsWindowMinimized)
-			GlobalSwapChain->Present(Clamp(GlobalState.SwapInterval, 0, 4), 0);
+		{
+			const HRESULT presentResult = GlobalSwapChain->Present(Clamp(GlobalState.SwapInterval, 0, 4), 0);
+			if (FAILED(presentResult))
+				Log::WriteHRESULT("IDXGISwapChain::Present", presentResult);
+		}
 		else
 			::Sleep(33);
 	}
 
 	i32 EnterProgramLoop(const StartupParam& startupParam, UserCallbacks userCallbacks)
 	{
+		Log::Write("EnterProgramLoop begin");
 #if REGENERATE_EMBEDDED_ICONS_SOURCE_CODE 
 		ON_STARTUP_CODEGEN();
 #endif
@@ -604,6 +614,8 @@ namespace ApplicationHost
 
 		GlobalState.NativeWindowHandle = hwnd;
 		GlobalState.WindowTitle = startupParam.WindowTitle;
+		if (hwnd == nullptr)
+			Log::Write("CreateWindowExW failed: Win32 error=%lu", ::GetLastError());
 
 		if (!CreateGlobalD3D11(startupParam, hwnd))
 		{
@@ -611,6 +623,7 @@ namespace ApplicationHost
 			::UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
 			return 1;
 		}
+		Log::Write("D3D11 initialized");
 
 		::ShowWindow(hwnd, SW_SHOWDEFAULT);
 		::UpdateWindow(hwnd);
@@ -637,6 +650,7 @@ namespace ApplicationHost
 		ImGui_ImplDX11_Init(GlobalD3D11Device, GlobalD3D11DeviceContext);
 
 		userCallbacks.OnStartup();
+		Log::Write("Entering message loop");
 
 		GuiScaleFactorToSetNextFrame = GuiScaleFactorCurrent = GuiScaleFactorTarget;
 		GlobalOriginalScaleStyle = ImGui::GetStyle();
@@ -732,6 +746,7 @@ namespace ApplicationHost
 		}
 
 		userCallbacks.OnShutdown();
+		Log::Write("Message loop ended");
 
 		IM_FREE(GlobalState.FontFileContent);
 		GlobalState.FontFileContent = nullptr;
@@ -775,6 +790,17 @@ namespace ApplicationHost
 		HRESULT hr = S_OK;
 		if (FAILED(hr = ::D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, NULL, deviceFlags, inFeatureLevels, ArrayCountI32(inFeatureLevels), D3D11_SDK_VERSION, &sd, &GlobalSwapChain, &GlobalD3D11Device, &outFeatureLevel, &GlobalD3D11DeviceContext)))
 		{
+			Log::WriteHRESULT("D3D11CreateDeviceAndSwapChain (primary)", hr);
+			#if PEEPO_DEBUG
+			// The Debug Layer is optional (Graphics Tools). Retry without it so a Debug build can still run.
+			if (deviceFlags & D3D11_CREATE_DEVICE_DEBUG)
+			{
+				const UINT deviceFlagsWithoutDebug = D3D11_CREATE_DEVICE_SINGLETHREADED;
+				if (SUCCEEDED(hr = ::D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, NULL, deviceFlagsWithoutDebug, inFeatureLevels, ArrayCountI32(inFeatureLevels), D3D11_SDK_VERSION, &sd, &GlobalSwapChain, &GlobalD3D11Device, &outFeatureLevel, &GlobalD3D11DeviceContext)))
+					goto device_created;
+				Log::WriteHRESULT("D3D11CreateDeviceAndSwapChain (without debug layer)", hr);
+			}
+			#endif
 			// NOTE: In case FLIP_DISCARD and or FRAME_LATENCY_WAITABLE_OBJECT aren't supported (<= win7?) try again using the regular bitblt model.
 			//		 For windows 8.1 specifically it might be better to first check for FLIP_SEQUENTIAL but whatever
 			sd.BufferCount = 1;
@@ -782,8 +808,12 @@ namespace ApplicationHost
 			sd.Flags = 0;
 
 			if (FAILED(hr = ::D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, NULL, deviceFlags, inFeatureLevels, ArrayCountI32(inFeatureLevels), D3D11_SDK_VERSION, &sd, &GlobalSwapChain, &GlobalD3D11Device, &outFeatureLevel, &GlobalD3D11DeviceContext)))
+			{
+				Log::WriteHRESULT("D3D11CreateDeviceAndSwapChain (legacy fallback)", hr);
 				return false;
+			}
 		}
+	device_created:
 
 		// NOTE: Disable silly ALT+ENTER fullscreen toggle default behavior
 		{

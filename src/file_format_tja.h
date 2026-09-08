@@ -24,7 +24,7 @@ namespace TJA
 	static constexpr std::string_view FilterName = "TJA Taiko Chart";
 	static constexpr std::string_view FilterSpec = "*.tja";
 
-	enum class Encoding : u8 { Unknown, UTF8, ShiftJIS };
+	enum class SaveFormat : u8 { Current, ANSI_CRLF };
 
 	enum class TokenType : u8
 	{
@@ -510,7 +510,7 @@ namespace TJA
 
 	ParsedTJA ParseTokens(const std::vector<Token>& tokens, ErrorList& outErrors);
 
-	void ConvertParsedToText(const ParsedTJA& inContent, std::string& out, Encoding encoding);
+	void ConvertParsedToText(const ParsedTJA& inContent, std::string& out, SaveFormat format);
 
 	struct ConvertedNote
 	{

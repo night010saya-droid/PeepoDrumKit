@@ -3,6 +3,7 @@
 #include "chart_editor.h"
 #include "chart_editor_settings.h"
 #include "chart_editor_i18n.h"
+#include "core_log.h"
 
 namespace PeepoDrumKit
 {
@@ -102,6 +103,7 @@ namespace PeepoDrumKit
 
 	int EntryPoint()
 	{
+		Log::Write("EntryPoint begin");
 		// TODO: Parse arguments and write into global argv settings struct
 		// auto[argc, argv] = CommandLine::GetCommandLineUTF8();
 
@@ -144,11 +146,13 @@ namespace PeepoDrumKit
 
 		callbacks.OnStartup = []
 		{
+			Log::Write("User startup begin");
 			i18n::RefreshLocales();
 			i18n::InitBuiltinLocale();
 			i18n::ReloadLocaleFile(SelectedGuiLanguage.c_str());
 			Audio::Engine.ApplicationStartup();
 			app = std::make_unique<ImGuiApplication>();
+			Log::Write("User startup complete");
 		};
 		callbacks.OnBeforeUpdate = []
 		{
@@ -160,6 +164,7 @@ namespace PeepoDrumKit
 		};
 		callbacks.OnShutdown = []
 		{
+			Log::Write("User shutdown begin");
 			app = nullptr;
 			Audio::Engine.ApplicationShutdown();
 
@@ -180,6 +185,7 @@ namespace PeepoDrumKit
 				SettingsToIni(Settings, iniFileContent); File::WriteAllBytes(SettingsIniFileName, iniFileContent);
 				Settings_Mutable.IsDirty = false;
 			}
+			Log::Write("User shutdown complete");
 		};
 		callbacks.OnWindowCloseRequest = []
 		{
@@ -205,12 +211,12 @@ static void Win32SetupConsoleMagic() { return; }
 #endif
 
 #if PEEPO_DEBUG
-int main(int, const char**) { Win32SetupConsoleMagic(); return PeepoDrumKit::EntryPoint(); }
+int main(int, const char**) { Win32SetupConsoleMagic(); Log::Initialize(); Log::InstallCrashHandler(); const int result = PeepoDrumKit::EntryPoint(); Log::Shutdown(); return result; }
 #elif PEEPO_RELEASE
 
 #if 1
 #include <Windows.h>
-int WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { Win32SetupConsoleMagic(); return PeepoDrumKit::EntryPoint(); }
+int WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { Win32SetupConsoleMagic(); Log::Initialize(); Log::InstallCrashHandler(); const int result = PeepoDrumKit::EntryPoint(); Log::Shutdown(); return result; }
 #else
 int WinMain(void*, void*, const wchar_t*, int) { Win32SetupConsoleMagic(); return PeepoDrumKit::EntryPoint(); }
 #endif

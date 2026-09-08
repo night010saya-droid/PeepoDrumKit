@@ -120,7 +120,9 @@ namespace PeepoDrumKit
 		struct GeneralData
 		{
 			WithDefault<std::string> DefaultCreatorName = {};
-			WithDefault<i32> DrumrollAutoHitBarDivision = 16;
+			WithDefault<i32> TJAFileSaveFormat = 0;
+			WithDefault<b8> IncludePeepoDrumKitComment = true;
+			WithDefault<f32> DrumrollPreviewRollsPerSecond = 8.0f;
 			WithDefault<b8> DisplayTimeInSongSpace = false;
 			WithDefault<b8> TimelineScrollInvertMouseWheel = false;
 			WithDefault<f32> TimelineScrollDistancePerMouseWheelTick = 100.0f;

@@ -1180,7 +1180,7 @@ namespace PeepoDrumKit
 						TJA::ParsedTJA tja;
 						ConvertChartProjectToTJA(context.Chart, tja);
 						exportDebugViewData.Text.clear();
-						TJA::ConvertParsedToText(tja, exportDebugViewData.Text, TJA::Encoding::Unknown);
+						TJA::ConvertParsedToText(tja, exportDebugViewData.Text, TJA::SaveFormat::Current);
 						exportDebugViewData.Editor.SetText(exportDebugViewData.Text);
 
 						// DEBUG: TJA bug hunting
@@ -1458,9 +1458,12 @@ namespace PeepoDrumKit
 			}
 
 			TJA::ParsedTJA tja;
-			ConvertChartProjectToTJA(context.Chart, tja);
+			ConvertChartProjectToTJA(context.Chart, tja, *Settings.General.IncludePeepoDrumKitComment);
 			std::string tjaText;
-			TJA::ConvertParsedToText(tja, tjaText, TJA::Encoding::UTF8);
+			const auto saveFormat = (*Settings.General.TJAFileSaveFormat == 1)
+				? TJA::SaveFormat::ANSI_CRLF
+				: TJA::SaveFormat::Current;
+			TJA::ConvertParsedToText(tja, tjaText, saveFormat);
 
 			// TODO: Proper async file saving by copying in-memory
 			if (createBackupOfOriginalTJABeforeOverwriteSave)

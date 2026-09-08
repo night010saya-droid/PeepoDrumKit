@@ -1032,7 +1032,8 @@ namespace PeepoDrumKit
 			});
 
 			b8 balloonPopCountDrawn = false; // prevent long pop count text from overlapping with long combo text
-			const Beat drummrollHitInterval = GetGridBeatSnap(*Settings.General.DrumrollAutoHitBarDivision);
+			const f32 rollsPerSecond = *Settings.General.DrumrollPreviewRollsPerSecond;
+			const Time drumrollHitInterval = Time::FromSec(1.0 / rollsPerSecond);
 			for (auto it = ReverseNoteDrawBuffer.rbegin(); it != ReverseNoteDrawBuffer.rend(); it++)
 			{
 				const Time timeSinceHit = TimeSinceNoteHit(it->Time, cursorTimeOrAnimated);
@@ -1062,15 +1063,15 @@ namespace PeepoDrumKit
 					}
 					else
 					{
-						const i32 maxHitCount = (it->OriginalNote->BeatDuration.Ticks / drummrollHitInterval.Ticks);
-						const Beat hitIntervalRoundedDuration = (drummrollHitInterval * maxHitCount);
+						const Time rollDuration = it->Tail.Time - it->Time;
+						const i32 maxHitCount = static_cast<i32>(Floor(rollDuration.ToSec() * rollsPerSecond));
 
 						i32 drumrollHitsSoFar = 0;
 						if (timeSinceHit >= Time::Zero())
 						{
-							for (Beat subBeat = hitIntervalRoundedDuration; subBeat >= Beat::Zero(); subBeat -= drummrollHitInterval)
+							for (i32 iHit = maxHitCount; iHit >= 0; iHit--)
 							{
-								const Time subHitTime = course->TempoMap.BeatToTime(it->OriginalNote->BeatTime + subBeat) + it->OriginalNote->TimeOffset;
+								const Time subHitTime = it->Time + (drumrollHitInterval * iHit);
 								if (subHitTime <= cursorTimeOrAnimated)
 									drumrollHitsSoFar++;
 							}
@@ -1086,9 +1087,9 @@ namespace PeepoDrumKit
 
 						if (timeSinceHit >= Time::Zero())
 						{
-							for (Beat subBeat = hitIntervalRoundedDuration; subBeat >= Beat::Zero(); subBeat -= drummrollHitInterval)
+							for (i32 iHit = maxHitCount; iHit >= 0; iHit--)
 							{
-								const Time subHitTime = course->TempoMap.BeatToTime(it->OriginalNote->BeatTime + subBeat) + it->OriginalNote->TimeOffset;
+								const Time subHitTime = it->Time + (drumrollHitInterval * iHit);
 								const Time timeSinceSubHit = TimeSinceNoteHit(subHitTime, cursorTimeOrAnimated);
 								// `>` to avoid displaying extra notes when editing (still fails sometimes)
 								if (timeSinceSubHit > Time::Zero() && timeSinceSubHit <= GameNoteHitAnimationDuration)

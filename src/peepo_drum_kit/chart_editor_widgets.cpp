@@ -436,6 +436,25 @@ namespace PeepoDrumKit
 		return out;
 	}
 
+	enum class InterpolationEasing : i32 { Linear, EaseIn, EaseOut, Count };
+	static constexpr cstr interpolationEasingNames[] = { "Linear", "Ease In", "Ease Out" };
+
+	static InterpolationEasing GetInterpolationEasing(std::string_view label)
+	{
+		Gui::PushID(Gui::StringViewStart(label), Gui::StringViewEnd(label));
+		i32& easingIndex = *Gui::GetStateStorage()->GetIntRef(Gui::GetID("Easing"), static_cast<i32>(InterpolationEasing::Linear));
+		Gui::PopID();
+		return static_cast<InterpolationEasing>(Clamp(easingIndex, 0, EnumCountI32<InterpolationEasing> - 1));
+	}
+
+	static f32 GetInterpolationEasingStrength(std::string_view label)
+	{
+		Gui::PushID(Gui::StringViewStart(label), Gui::StringViewEnd(label));
+		f32& strength = *Gui::GetStateStorage()->GetFloatRef(Gui::GetID("EasingStrength"), 0.0f);
+		Gui::PopID();
+		return Clamp(strength, 0.0f, 2.0f);
+	}
+
 	template <typename T>
 	static b8 GuiPropertyRangeInterpolationEditWidget(std::string_view label, T inOutStartEnd[2], T step, T stepFast, b8 enableClamp, T minValue, T maxValue, cstr format, const cstr previewStrings[2])
 	{
@@ -443,6 +462,23 @@ namespace PeepoDrumKit
 		Gui::PushID(Gui::StringViewStart(label), Gui::StringViewEnd(label));
 		Gui::Property::PropertyTextValueFunc(label, [&]
 		{
+			i32& easingIndex = *Gui::GetStateStorage()->GetIntRef(Gui::GetID("Easing"), static_cast<i32>(InterpolationEasing::Linear));
+			InterpolationEasing easing = static_cast<InterpolationEasing>(Clamp(easingIndex, 0, EnumCountI32<InterpolationEasing> - 1));
+			f32& easingStrength = *Gui::GetStateStorage()->GetFloatRef(Gui::GetID("EasingStrength"), 0.0f);
+			Gui::SetNextItemWidth(-1.0f);
+			if (Gui::ComboEnum("##Easing", &easing, interpolationEasingNames))
+			{
+				easingIndex = static_cast<i32>(easing);
+				wasValueChanged = true;
+			}
+			Gui::Spacing();
+			Gui::BeginDisabled(easing == InterpolationEasing::Linear);
+			Gui::SetNextItemWidth(-1.0f);
+			if (Gui::SliderFloat("Easing strength", &easingStrength, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
+				wasValueChanged = true;
+			Gui::EndDisabled();
+			Gui::Spacing();
+
 			static constexpr i32 components = 2; // NOTE: Unicode "Rightwards Arrow" U+2192
 			static constexpr std::string_view divisionText = u8"  →  "; // "  ->  "; // " < > ";
 			const f32 divisionLabelWidth = Gui::CalcTextSize(Gui::StringViewStart(divisionText), Gui::StringViewEnd(divisionText)).x;
@@ -798,15 +834,23 @@ namespace PeepoDrumKit
 			// Details
 			{
 				SortedNotesList& notes = context.ChartSelectedCourse->GetNotes(context.ChartSelectedBranch);
+				const b8 hasRangeSelection = context.RangeSelection.IsActiveAndHasEnd();
+				const Beat rangeSelectionMin = context.RangeSelection.GetMin();
+				const Beat rangeSelectionMax = context.RangeSelection.GetMax();
+				const auto isInStatsRange = [&](const Note& note)
+				{
+					return !hasRangeSelection || (note.GetStart() <= rangeSelectionMax && note.GetEnd() >= rangeSelectionMin);
+				};
 
-				int _donCount = notes.CountIf([](Note N) {return IsDonNote(N.Type);});
-				int _kaCount = notes.CountIf([](Note N) {return IsKaNote(N.Type);});
-				int _kaDonCount = notes.CountIf([](Note N) {return IsKaDonNote(N.Type);});
-				int _adLibCount = notes.CountIf([](Note N) {return IsAdlibNote(N.Type);});
-				int _bombCount = notes.CountIf([](Note N) {return IsBombNote(N.Type);});
+				int _donCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsDonNote(N.Type);});
+				int _kaCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaNote(N.Type);});
+				int _kaDonCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaDonNote(N.Type);});
+				int _adLibCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsAdlibNote(N.Type);});
+				int _bombCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsBombNote(N.Type);});
 				int _maxCombo = _donCount + _kaCount + _kaDonCount;
 
-				f64 _density = _maxCombo / chart.ChartDuration.Seconds;
+				const Time statsDuration = hasRangeSelection ? context.GetRangeSelectionDuration() : chart.ChartDuration;
+				f64 _density = statsDuration.Seconds > 0.0 ? _maxCombo / statsDuration.Seconds : 0.0;
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
 				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
@@ -815,6 +859,7 @@ namespace PeepoDrumKit
 				Gui::PopStyleColor();
 
 				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
+				Gui::Text("Duration: %.3f sec", statsDuration.Seconds);
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
 				Gui::Text("Density: %.3f hit/s", _density);
@@ -1283,9 +1328,20 @@ namespace PeepoDrumKit
 	{
 		// TODO: Maybe option to switch between Beat/Time interpolation modes (?)
 		static constexpr auto getT = [](const TempChartItem& item) -> f64 { return item.MemberValues.BeatStart().Ticks; };
-		static constexpr auto getInterpolatedValue = [](const TempChartItem& startItem, const TempChartItem& endItem, const TempChartItem& thisItem, const T& startValue, const T& endValue) -> T
+		const auto getInterpolatedValue = [label](const TempChartItem& startItem, const TempChartItem& endItem, const TempChartItem& thisItem, const T& startValue, const T& endValue) -> T
 		{
-			return ConvertRange(getT(startItem), getT(endItem), startValue, endValue, getT(thisItem));
+			const InterpolationEasing easing = GetInterpolationEasing(label);
+			const f32 easingStrength = GetInterpolationEasingStrength(label);
+			if (easing == InterpolationEasing::Linear)
+				return ConvertRange(getT(startItem), getT(endItem), startValue, endValue, getT(thisItem));
+
+			const f32 t = static_cast<f32>(ConvertRange(getT(startItem), getT(endItem), 0.0, 1.0, getT(thisItem)));
+			const f32 easedTBase = (easing == InterpolationEasing::EaseIn) ? t * t : 1.0f - (1.0f - t) * (1.0f - t);
+			const f32 binaryT = (t < 0.5f) ? 0.0f : 1.0f;
+			const f32 easedT = (easingStrength <= 1.0f)
+				? Lerp(t, easedTBase, easingStrength)
+				: Lerp(easedTBase, binaryT, easingStrength - 1.0f);
+			return Lerp<T>(startValue, endValue, easedT);
 		};
 
 		TempChartItem* startItem = !SelectedItems.empty() ? &SelectedItems.front() : nullptr;

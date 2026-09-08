@@ -377,7 +377,8 @@ namespace PeepoDrumKit
 			}
 		});
 
-		out.General.DrumrollAutoHitBarDivision.Value = Clamp(out.General.DrumrollAutoHitBarDivision.Value, 1, Beat::TicksPerBeat);
+		out.General.DrumrollPreviewRollsPerSecond.Value = Clamp(out.General.DrumrollPreviewRollsPerSecond.Value, 0.1f, 100.0f);
+		out.General.TJAFileSaveFormat.Value = Clamp(out.General.TJAFileSaveFormat.Value, 0, 1);
 
 		return parser.Result;
 	}
@@ -438,7 +439,9 @@ namespace PeepoDrumKit
 		{
 			SECTION("general");
 			X(General.DefaultCreatorName, "default_creator_name");
-			X(General.DrumrollAutoHitBarDivision, "drumroll_auto_hit_bar_division");
+			X(General.TJAFileSaveFormat, "tja_file_save_format");
+			X(General.IncludePeepoDrumKitComment, "include_peepo_drum_kit_comment");
+			X(General.DrumrollPreviewRollsPerSecond, "drumroll_preview_rolls_per_second");
 			X(General.DisplayTimeInSongSpace, "display_time_in_song_space");
 			X(General.TimelineScrollInvertMouseWheel, "timeline_scroll_invert_mouse_wheel");
 			X(General.TimelineScrollDistancePerMouseWheelTick, "timeline_scroll_distance_per_mouse_wheel_tick");

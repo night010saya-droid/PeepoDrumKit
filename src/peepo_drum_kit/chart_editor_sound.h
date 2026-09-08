@@ -9,6 +9,7 @@ namespace PeepoDrumKit
 	{
 		TaikoDon,
 		TaikoKa,
+		Balloon,
 		MetronomeBar,
 		MetronomeBeat,
 		Count
@@ -18,6 +19,7 @@ namespace PeepoDrumKit
 	{
 		{ u8"assets/audio/taiko_don_16bit_44100", u8"assets/audio/taiko_don", u8"assets/audio/don" },
 		{ u8"assets/audio/taiko_ka_16bit_44100", u8"assets/audio/taiko_ka", u8"assets/audio/ka"} ,
+		{ u8"assets/audio/balloon" },
 		{ u8"assets/audio/metronome_bar_16bit_44100", u8"assets/audio/metronome_bar"},
 		{ u8"assets/audio/metronome_beat_16bit_44100", u8"assets/audio/metronome_beat"},
 	};

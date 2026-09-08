@@ -1026,22 +1026,28 @@ namespace PeepoDrumKit
 						auto [iHitMin, iHitLimit] = std::equal_range(range.begin(), range.end(), 0);
 						// skip unhearable voices due to simultaneous voice limit
 						for (i32 iHit = std::max(iHitMin.Idx, iHitLimit.Idx - i32{ Audio::AudioEngine::MaxSimultaneousVoices }); iHit < iHitLimit.Idx; ++iHit)
-							PlayNoteSound(getHitTime(iHit), note.Type, pan);
+						{
+							if (IsBalloonNote(note.Type) && iHit == (note.BalloonPopCount - 1))
+								context.SfxVoicePool.PlaySound(SoundEffectType::Balloon, Min((nonSmoothCursorThisFrame - getHitTime(iHit)), Time::Zero()), getHitTime(iHit), pan);
+							else
+								PlayNoteSound(getHitTime(iHit), note.Type, pan);
+						}
 					};
 
+					const f32 rollsPerSecond = *Settings.General.DrumrollPreviewRollsPerSecond;
+					const Time hitInterval = Time::FromSec(1.0 / rollsPerSecond);
+					const Time timeHead = course->TempoMap.BeatToTime(note.BeatTime) + note.TimeOffset;
 					if (IsBalloonNote(note.Type))
 					{
-						const Time timeHead = course->TempoMap.BeatToTime(note.BeatTime);
-						const Time timeEnd = course->TempoMap.BeatToTime(note.GetEnd());
-						auto getHitTime = [&](i32 iHit) { return ConvertRange(0, i32{ note.BalloonPopCount }, timeHead, timeEnd, iHit) + note.TimeOffset; };
+						auto getHitTime = [&](i32 iHit) { return timeHead + (hitInterval * iHit); };
 						checkLongNoteHits(note.BalloonPopCount, getHitTime);
 					}
 					else
 					{
-						// assume positive beat progression during roll
-						const Beat drummrollBeatInterval = GetGridBeatSnap(*Settings.General.DrumrollAutoHitBarDivision);
-						auto getHitTime = [&](i32 iHit) { return course->TempoMap.BeatToTime(note.BeatTime + iHit * drummrollBeatInterval) + note.TimeOffset; };
-						checkLongNoteHits(note.BeatDuration / drummrollBeatInterval + 1, getHitTime);
+						const Time timeEnd = course->TempoMap.BeatToTime(note.GetEnd()) + note.TimeOffset;
+						const i32 nHits = static_cast<i32>(Ceil((timeEnd - timeHead).ToSec() * rollsPerSecond)) + 1;
+						auto getHitTime = [&](i32 iHit) { return timeHead + (hitInterval * iHit); };
+						checkLongNoteHits(nHits, getHitTime);
 					}
 				}
 				else

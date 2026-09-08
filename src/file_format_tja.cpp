@@ -1095,25 +1095,26 @@ namespace TJA
 	static const ParsedMainMetadata DefaultMainMetadata = {};
 	static const ParsedCourseMetadata DefaultCourseMetadata = {};
 
-	void ConvertParsedToText(const ParsedTJA& inContent, std::string& out, Encoding encoding)
+	void ConvertParsedToText(const ParsedTJA& inContent, std::string& out, SaveFormat format)
 	{
 		// TODO: ... or maybe tokenize first instead of going right to text..?
 		out.reserve(out.size() + 0x4000);
-		if (encoding == Encoding::UTF8)
+		if (format == SaveFormat::Current)
 			out += std::string_view(UTF8::BOM_UTF8, sizeof(UTF8::BOM_UTF8));
 
-		static constexpr auto appendLine = [](std::string& out, std::string_view line) { out += line; out += '\n'; };
-		static constexpr auto appendProperyLine = [](std::string& out, Key key, std::string_view value) { out += KeyStrings[EnumToIndex(key)]; out += ':'; out += value; out += '\n'; };
-		static constexpr auto appendSuffixedPropertyLine = [](std::string& out, Key key, std::string_view suffix, std::string_view value)
-		{ out += KeyStrings[EnumToIndex(key)]; out += suffix; out += ':'; out += value; out += '\n'; };
-		static constexpr auto appendCommandLine = [](std::string& out, Key key, std::string_view value) { out += '#'; out += KeyStrings[EnumToIndex(key)]; if (!value.empty()) { out += ' '; out += value; }out += '\n'; };
-		static constexpr auto appendBalloonProperyLine = [](std::string& out, Key key, const std::vector<i32>& popCounts)
+		const std::string_view lineEnding = (format == SaveFormat::ANSI_CRLF) ? "\r\n" : "\n";
+		auto appendLine = [&](std::string& out, std::string_view line) { out += line; out += lineEnding; };
+		auto appendProperyLine = [&](std::string& out, Key key, std::string_view value) { out += KeyStrings[EnumToIndex(key)]; out += ':'; out += value; out += lineEnding; };
+		auto appendSuffixedPropertyLine = [&](std::string& out, Key key, std::string_view suffix, std::string_view value)
+		{ out += KeyStrings[EnumToIndex(key)]; out += suffix; out += ':'; out += value; out += lineEnding; };
+		auto appendCommandLine = [&](std::string& out, Key key, std::string_view value) { out += '#'; out += KeyStrings[EnumToIndex(key)]; if (!value.empty()) { out += ' '; out += value; }out += lineEnding; };
+		auto appendBalloonProperyLine = [&](std::string& out, Key key, const std::vector<i32>& popCounts)
 		{
 			out += KeyStrings[EnumToIndex(key)];
 			out += ':';
 			char buffer[16];
 			for (size_t i = 0; i < popCounts.size(); i++) { if (i != 0) { out += ','; } out += std::string_view(buffer, sprintf_s(buffer, "%d", popCounts[i])); }
-			out += '\n';
+			out += lineEnding;
 		};
 		char buffer[512];
 
@@ -1184,7 +1185,7 @@ namespace TJA
 				out += " ";
 				out += inContent.PeepoDrumKitCommentDate.ToString();
 			}
-			out += '\n';
+			out += lineEnding;
 		}
 
 		DifficultyType currentCourseScope = DifficultyType::Count; // default course scope
@@ -1467,6 +1468,9 @@ namespace TJA
 			for (CourseIter it = itBeg; it != itEnd; ++it)
 				convertCourse(it, itBeg, itEnd);
 		}
+
+		if (format == SaveFormat::ANSI_CRLF)
+			out = ShiftJIS::FromUTF8(out);
 	}
 
 	void ConvertConvertedMeasuresToParsedCommands(const std::vector<ConvertedMeasure>& inMeasures, std::vector<ParsedChartCommand>& outCommands)
