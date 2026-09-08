@@ -1125,6 +1125,90 @@ namespace PeepoDrumKit
 
 	void TempoCalculatorWindow::DrawGui(ChartContext& context)
 	{
+		assert(context.ChartSelectedCourse != nullptr);
+		auto& chart = context.Chart;
+		auto& course = *context.ChartSelectedCourse;
+
+		if (Gui::CollapsingHeader("Automatic measurement", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (TempoAnalysisRunning && TempoAnalysisFuture.valid() && TempoAnalysisFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+			{
+				TempoAnalysis = TempoAnalysisFuture.get();
+				TempoAnalysisRunning = false;
+				HasTempoAnalysis = TempoAnalysis.IsValid();
+			}
+
+			if (Gui::Button("Analyze audio", { Gui::CalcItemWidth(), 0.0f }) && !TempoAnalysisRunning)
+			{
+				TempoAnalysis = {};
+				HasTempoAnalysis = false;
+				IsTempoAnalysisUnavailable = false;
+				if (const Audio::PCMSampleBuffer* sampleBuffer = Audio::Engine.GetSourceSampleBufferView(context.SongSource))
+				{
+					TempoAnalysisRunning = true;
+					TempoAnalysisFuture = std::async(std::launch::async, [sampleBuffer]
+					{
+						return Audio::AnalyzeTempo(*sampleBuffer);
+					});
+				}
+				else
+					IsTempoAnalysisUnavailable = true;
+			}
+			if (TempoAnalysisRunning)
+				Gui::TextDisabled("Analyzing audio...");
+			else if (IsTempoAnalysisUnavailable)
+				Gui::TextDisabled("Load a song before analyzing.");
+			else if (HasTempoAnalysis)
+			{
+				for (size_t i = 0; i < TempoAnalysis.CandidateCount; ++i)
+				{
+					const auto& candidate = TempoAnalysis.Candidates[i];
+					Gui::Text("%.3f BPM / %.0f ms", candidate.BPM, candidate.Offset.ToMS());
+					Gui::SameLine();
+					const std::string buttonLabel = "Apply##TempoAnalysis" + std::to_string(i);
+					if (Gui::Button(buttonLabel.c_str()))
+					{
+						context.Undo.Execute<Commands::AddTempoChange>(&course, &course.TempoMap, TempoChange(Beat::Zero(), Tempo(candidate.BPM)));
+						context.Undo.Execute<Commands::ChangeSongOffset>(&chart, -candidate.Offset);
+					}
+				}
+			}
+			else if (!IsTempoAnalysisUnavailable)
+				Gui::TextDisabled("No reliable onset candidates found.");
+
+			Gui::Separator();
+			Gui::Text("Song offset: %.3f ms", chart.SongOffset.ToMS());
+			Gui::SameLine();
+			if (f32 offsetMS = chart.SongOffset.ToMS_F32(); Gui::SpinFloat("##TempoCalculatorSongOffset", &offsetMS, 1.0f, 10.0f, "%.3f ms", ImGuiInputTextFlags_None))
+				context.Undo.Execute<Commands::ChangeSongOffset>(&chart, Time::FromMS(offsetMS));
+
+			const TempoChange* initialTempoChange = course.TempoMap.Tempo.TryFindLastAtBeat(Beat::Zero());
+			const f64 initialBPM = (initialTempoChange != nullptr) ? initialTempoChange->Tempo.BPM : FallbackTempo.BPM;
+			const f64 beatDuration = (std::abs(initialBPM) > 0.0001) ? 60.0 / std::abs(initialBPM) : 0.0;
+			Gui::Text("Offset shift (initial BPM %.3f)", initialBPM);
+			if (beatDuration > 0.0)
+			{
+				const auto shiftOffset = [&](f64 beats)
+				{
+					context.Undo.Execute<Commands::ChangeSongOffset>(&chart, chart.SongOffset + Time::FromSec(beatDuration * beats));
+				};
+				static constexpr std::array<std::pair<cstr, f64>, 6> shifts = {{
+					{ "-1 beat", -1.0 }, { "-1/2 beat", -0.5 }, { "-1/4 beat", -0.25 },
+					{ "+1/4 beat", 0.25 }, { "+1/2 beat", 0.5 }, { "+1 beat", 1.0 },
+				}};
+				for (const auto& [label, beats] : shifts)
+				{
+					if (Gui::Button(label))
+						shiftOffset(beats);
+					Gui::SameLine();
+				}
+				Gui::NewLine();
+			}
+		}
+
+		if (!Gui::CollapsingHeader("Manual measurement", ImGuiTreeNodeFlags_DefaultOpen))
+			return;
+
 		Gui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
 		Gui::PushStyleColor(ImGuiCol_Button, Gui::GetStyleColorVec4(ImGuiCol_Header));
 		Gui::PushStyleColor(ImGuiCol_ButtonHovered, Gui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
@@ -2629,9 +2713,10 @@ namespace PeepoDrumKit
 				Gui::Property::Value([&]
 				{
 					Gui::SetNextItemWidth(-1.0f);
-					if (f32 v = chart.SongOffset.ToMS_F32(); Gui::SpinFloat("##SongOffset", &v, 1.0f, 10.0f, "%.2f ms", ImGuiInputTextFlags_None))
+					if (f32 v = chart.SongOffset.ToMS_F32(); Gui::SpinFloat("##SongOffset", &v, 1.0f, 10.0f, "%.3f ms", ImGuiInputTextFlags_None))
 						context.Undo.Execute<Commands::ChangeSongOffset>(&chart, Time::FromMS(v));
 				});
+
 				// TODO: Disable merge if made inactive this frame (?)
 				// if (Gui::IsItemDeactivatedAfterEdit()) {}
 

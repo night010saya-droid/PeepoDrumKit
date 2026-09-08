@@ -7,6 +7,8 @@
 #include "chart_editor_theme.h"
 #include "imgui/imgui_include.h"
 #include "imgui/backend/imgui_custom_draw.h"
+#include "audio/audio_tempo_analysis.h"
+#include <future>
 
 namespace PeepoDrumKit
 {
@@ -66,6 +68,11 @@ namespace PeepoDrumKit
 	struct TempoCalculatorWindow
 	{
 		TempoTapCalculator Calculator = {};
+		Audio::TempoAnalysisResult TempoAnalysis = {};
+		std::future<Audio::TempoAnalysisResult> TempoAnalysisFuture = {};
+		b8 HasTempoAnalysis = false;
+		b8 IsTempoAnalysisUnavailable = false;
+		b8 TempoAnalysisRunning = false;
 		void DrawGui(ChartContext& context);
 	};
 

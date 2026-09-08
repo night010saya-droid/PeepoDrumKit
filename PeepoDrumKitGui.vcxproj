@@ -104,6 +104,7 @@
       <IntrinsicFunctions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</IntrinsicFunctions>
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</BasicRuntimeChecks>
     </ClCompile>
+    <ClCompile Include="src\audio\audio_tempo_analysis.cpp" />
     <ClCompile Include="src\audio\audio_backend_wasapi.cpp" />
     <ClCompile Include="src\audio\audio_file_formats_vorbis.c">
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</BasicRuntimeChecks>
@@ -161,6 +162,7 @@
     <ClInclude Include="src\audio\audio_engine.h" />
     <ClInclude Include="src\audio\audio_file_formats.h" />
     <ClInclude Include="src\audio\audio_waveform.h" />
+    <ClInclude Include="src\audio\audio_tempo_analysis.h" />
     <ClInclude Include="src\audio\audio_backend.h" />
     <ClInclude Include="src\core_version.h" />
     <ClInclude Include="src\core_build_info.h" />
