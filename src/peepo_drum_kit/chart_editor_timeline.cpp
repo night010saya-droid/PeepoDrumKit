@@ -1014,7 +1014,7 @@ namespace PeepoDrumKit
 				f32 pan = (nLanes <= 1) ? 0 : 2.0 * iLane / (nLanes - 1) - 1;
 				if (note.BeatDuration > Beat::Zero())
 				{
-					auto checkLongNoteHits = [&](i32 nHits, auto&& getHitTime)
+					auto checkLongNoteHits = [&](i32 nHits, auto&& getHitTime, b8 playBalloonSound = false)
 					{
 						auto checkHitTime = [&](i32 iHit) { return checkNoteSound(getHitTime(iHit)); };
 						auto range = Range(0, nHits, checkHitTime);
@@ -1027,7 +1027,7 @@ namespace PeepoDrumKit
 						// skip unhearable voices due to simultaneous voice limit
 						for (i32 iHit = std::max(iHitMin.Idx, iHitLimit.Idx - i32{ Audio::AudioEngine::MaxSimultaneousVoices }); iHit < iHitLimit.Idx; ++iHit)
 						{
-							if (IsBalloonNote(note.Type) && iHit == (note.BalloonPopCount - 1))
+							if (playBalloonSound && iHit == (note.BalloonPopCount - 1))
 								context.SfxVoicePool.PlaySound(SoundEffectType::Balloon, Min((nonSmoothCursorThisFrame - getHitTime(iHit)), Time::Zero()), getHitTime(iHit), pan);
 							else
 								PlayNoteSound(getHitTime(iHit), note.Type, pan);
@@ -1039,8 +1039,11 @@ namespace PeepoDrumKit
 					const Time timeHead = course->TempoMap.BeatToTime(note.BeatTime) + note.TimeOffset;
 					if (IsBalloonNote(note.Type))
 					{
+						const Time timeEnd = course->TempoMap.BeatToTime(note.GetEnd()) + note.TimeOffset;
+						const i32 maxHitsInDuration = static_cast<i32>(Floor((timeEnd - timeHead).ToSec() * rollsPerSecond)) + 1;
+						const i32 nHits = Min(note.BalloonPopCount, maxHitsInDuration);
 						auto getHitTime = [&](i32 iHit) { return timeHead + (hitInterval * iHit); };
-						checkLongNoteHits(note.BalloonPopCount, getHitTime);
+						checkLongNoteHits(nHits, getHitTime, nHits >= note.BalloonPopCount);
 					}
 					else
 					{

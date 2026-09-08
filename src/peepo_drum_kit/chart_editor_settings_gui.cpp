@@ -187,7 +187,8 @@ namespace PeepoDrumKit
 
 				if (!in.Description.empty())
 				{
-					assert(in.Description.back() == '.');
+					assert(in.Description.back() == '.' ||
+						(in.Description.size() >= 3 && in.Description.substr(in.Description.size() - 3) == u8"。"));
 					Gui::PushStyleColor(ImGuiCol_Text, Gui::GetColorU32(ImGuiCol_Text, 0.8f));
 					Gui::PushTextWrapPos(ClampBot(Gui::GetCursorPosX() + Gui::GetContentRegionAvail().x, Gui::GetFrameHeight() * 12.0f));
 					Gui::TextWrapped(in.Description.data());
@@ -203,9 +204,9 @@ namespace PeepoDrumKit
 				if (inOutB8 != nullptr)
 				{
 					if (in.Widget == WidgetType::B8_ChartSongSpaceComboBox)
-						changesWereMade |= GuiBoolCombo("##", inOutB8, { "Song Space", "Chart Space" });
+						changesWereMade |= GuiBoolCombo("##", inOutB8, { UI_Str("SETTINGS_SONG_SPACE"), UI_Str("SETTINGS_CHART_SPACE") });
 					else if (in.Widget == WidgetType::B8_ExclusiveAudioComboBox)
-						changesWereMade |= GuiBoolCombo("##", inOutB8, { "True (Exclusive Mode)", "False" });
+						changesWereMade |= GuiBoolCombo("##", inOutB8, { UI_Str("SETTINGS_TRUE_EXCLUSIVE"), UI_Str("SETTINGS_FALSE") });
 					else
 						changesWereMade |= GuiBoolCombo("##", inOutB8);
 				}
@@ -283,7 +284,7 @@ namespace PeepoDrumKit
 						Gui::SameLine(0.0f, style.ItemInnerSpacing.x);
 						if (Gui::BeginCombo("##Combo", "", ImGuiComboFlags_NoPreview | ImGuiComboFlags_PopupAlignLeft))
 						{
-							if (Gui::Selectable("Reset to Default", false, !inOutF32->HasValue ? ImGuiSelectableFlags_Disabled : 0)) { in.ResetToDefault(); changesWereMade = true; }
+							if (Gui::Selectable(UI_Str("SETTINGS_RESET_DEFAULT"), false, !inOutF32->HasValue ? ImGuiSelectableFlags_Disabled : 0)) { in.ResetToDefault(); changesWereMade = true; }
 							Gui::EndCombo();
 						}
 						if (changesWereMade) { inOutF32->Value = Clamp(inOutF32->Value, 50.0f, 5000.0f); }
@@ -302,8 +303,8 @@ namespace PeepoDrumKit
 						Gui::SameLine(0.0f, style.ItemInnerSpacing.x);
 						if (Gui::BeginCombo("##Combo", "", ImGuiComboFlags_NoPreview | ImGuiComboFlags_PopupAlignLeft))
 						{
-							if (Gui::Selectable("Reset to Default", false, !inOutF32->HasValue ? ImGuiSelectableFlags_Disabled : 0)) { in.ResetToDefault(); changesWereMade = true; }
-							if (Gui::Selectable("Disable Animation", false, (inOutF32->Value == 0.0f) ? ImGuiSelectableFlags_Disabled : 0)) { inOutF32->Value = 0.0f; changesWereMade = true; }
+							if (Gui::Selectable(UI_Str("SETTINGS_RESET_DEFAULT"), false, !inOutF32->HasValue ? ImGuiSelectableFlags_Disabled : 0)) { in.ResetToDefault(); changesWereMade = true; }
+							if (Gui::Selectable(UI_Str("SETTINGS_DISABLE_ANIMATION"), false, (inOutF32->Value == 0.0f) ? ImGuiSelectableFlags_Disabled : 0)) { inOutF32->Value = 0.0f; changesWereMade = true; }
 							Gui::EndCombo();
 						}
 						if (changesWereMade) { inOutF32->Value = Clamp(inOutF32->Value, 0.0f, 1000.0f); }
@@ -341,7 +342,7 @@ namespace PeepoDrumKit
 			if (filter != nullptr)
 			{
 				Gui::SetNextItemWidth(-1.0f);
-				if (Gui::InputTextWithHint("##Filter", "Type to search...", filter->InputBuf, ArrayCount(filter->InputBuf)))
+				if (Gui::InputTextWithHint("##Filter", UI_Str("SETTINGS_SEARCH_HINT"), filter->InputBuf, ArrayCount(filter->InputBuf)))
 					filter->Build();
 			}
 
@@ -395,7 +396,7 @@ namespace PeepoDrumKit
 					{
 						GuiTextWithCategoryHighlight(entry.Header);
 						Gui::Separator();
-						if (Gui::MenuItem("Reset to Default", "", nullptr))
+						if (Gui::MenuItem(UI_Str("SETTINGS_RESET_DEFAULT"), "", nullptr))
 						{
 							entry.ResetToDefault();
 							changesWereMade = true;
@@ -447,7 +448,7 @@ namespace PeepoDrumKit
 			if (filter != nullptr)
 			{
 				Gui::SetNextItemWidth(-1.0f);
-				if (Gui::InputTextWithHint("##Filter", "Type to search...", filter->InputBuf, ArrayCount(filter->InputBuf)))
+				if (Gui::InputTextWithHint("##Filter", UI_Str("SETTINGS_SEARCH_HINT"), filter->InputBuf, ArrayCount(filter->InputBuf)))
 					filter->Build();
 			}
 
@@ -460,8 +461,8 @@ namespace PeepoDrumKit
 				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::TableSetupScrollFreeze(0, 1);
 				Gui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, Gui::CalcTextSize("(Default)").x + Gui::GetFrameHeight());
-				Gui::TableSetupColumn("Action", ImGuiTableColumnFlags_None);
-				Gui::TableSetupColumn("Binding", ImGuiTableColumnFlags_None);
+				Gui::TableSetupColumn(UI_Str("SETTINGS_ACTION"), ImGuiTableColumnFlags_None);
+				Gui::TableSetupColumn(UI_Str("SETTINGS_BINDING"), ImGuiTableColumnFlags_None);
 				Gui::TableHeadersRow();
 				Gui::PopFont();
 
@@ -499,8 +500,8 @@ namespace PeepoDrumKit
 					{
 						GuiTextWithCategoryHighlight(entry.Name);
 						Gui::Separator();
-						if (Gui::MenuItem("Clear All", "", nullptr)) { entry.Binding->Value.ClearAll(); entry.Binding->SetHasValueIfNotDefault(); changesWereMade = true; }
-						if (Gui::MenuItem("Reset to Default", "", nullptr)) { entry.Binding->ResetToDefault(); changesWereMade = true; }
+						if (Gui::MenuItem(UI_Str("SETTINGS_CLEAR_ALL"), "", nullptr)) { entry.Binding->Value.ClearAll(); entry.Binding->SetHasValueIfNotDefault(); changesWereMade = true; }
+						if (Gui::MenuItem(UI_Str("SETTINGS_RESET_DEFAULT"), "", nullptr)) { entry.Binding->ResetToDefault(); changesWereMade = true; }
 						Gui::EndPopup();
 					}
 
@@ -602,13 +603,13 @@ namespace PeepoDrumKit
 							Gui::PushStyleColor(ImGuiCol_ButtonActive, Gui::GetStyleColorVec4(ImGuiCol_HeaderActive));
 							{
 								Gui::TableSetColumnIndex(1);
-								if (Gui::Button("Up", { Gui::GetContentRegionAvail().x, 0.0f })) { indexToMoveUp = i; }
+						if (Gui::Button(UI_Str("SETTINGS_UP"), { Gui::GetContentRegionAvail().x, 0.0f })) { indexToMoveUp = i; }
 
 								Gui::TableSetColumnIndex(2);
-								if (Gui::Button("Down", { Gui::GetContentRegionAvail().x, 0.0f })) { indexToMoveDown = i; }
+						if (Gui::Button(UI_Str("SETTINGS_DOWN"), { Gui::GetContentRegionAvail().x, 0.0f })) { indexToMoveDown = i; }
 
 								Gui::TableSetColumnIndex(3);
-								if (Gui::Button("Remove", { Gui::GetContentRegionAvail().x, 0.0f })) { indexToRemove = i; }
+						if (Gui::Button(UI_Str("SETTINGS_REMOVE"), { Gui::GetContentRegionAvail().x, 0.0f })) { indexToRemove = i; }
 							}
 							Gui::PopStyleColor(3);
 
@@ -667,7 +668,7 @@ namespace PeepoDrumKit
 							(state.SelectedMultiBinding->Value == state.SelectedMultiBindingOnOpenCopy.Value);
 
 						Gui::BeginDisabled(isSameAsOnOpen);
-						if (Gui::Button("Revert Changes", { Gui::CalcItemWidth(), 0.0f }))
+						if (Gui::Button(UI_Str("SETTINGS_REVERT_CHANGES"), { Gui::CalcItemWidth(), 0.0f }))
 						{
 							state.SelectedMultiBinding->HasValue = state.SelectedMultiBindingOnOpenCopy.HasValue;
 							state.SelectedMultiBinding->Value = state.SelectedMultiBindingOnOpenCopy.Value;
@@ -678,7 +679,7 @@ namespace PeepoDrumKit
 						Gui::SameLine();
 
 						Gui::BeginDisabled(!state.SelectedMultiBinding->HasValue);
-						if (Gui::Button("Reset to Default", { Gui::CalcItemWidth(), 0.0f }))
+						if (Gui::Button(UI_Str("SETTINGS_RESET_DEFAULT"), { Gui::CalcItemWidth(), 0.0f }))
 						{
 							state.SelectedMultiBinding->ResetToDefault();
 							changesWereMade = true;
@@ -707,7 +708,7 @@ namespace PeepoDrumKit
 		Gui::PushStyleColor(ImGuiCol_TabSelected, Gui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
 		if (Gui::BeginTabBar("SettingsTabs", ImGuiTabBarFlags_None))
 		{
-			if (Gui::BeginTabItem("General Settings"))
+			if (Gui::BeginTabItem(UI_Str("SETTINGS_TAB_GENERAL")))
 			{
 				Gui::PushStyleVar(ImGuiStyleVar_FramePadding, originalFramePadding);
 				{
@@ -718,66 +719,66 @@ namespace PeepoDrumKit
 					{
 						SettingsGui::SettingsEntry(
 							settings.General.DefaultCreatorName,
-							"General: Default Creator Name",
-							"The name that is automatically filled in when creating a new chart."),
+							UI_Str("SETTINGS_GENERAL_DEFAULT_CREATOR"),
+							UI_Str("SETTINGS_GENERAL_DEFAULT_CREATOR_DESC")),
 
 						SettingsGui::SettingsEntry(
 							settings.General.TJAFileSaveFormat,
-							"TJA: File Save Format",
-							"Select the encoding and line ending used when saving TJA files.",
+							UI_Str("SETTINGS_TJA_SAVE_FORMAT"),
+							UI_Str("SETTINGS_TJA_SAVE_FORMAT_DESC"),
 							SettingsGui::WidgetType::I32_TJAFileSaveFormat),
 
 						SettingsGui::SettingsEntry(
 							settings.General.IncludePeepoDrumKitComment,
-							"TJA: Include PeepoDrumKit Header",
-							"Include the PeepoDrumKit identification comment when saving TJA files."),
+							UI_Str("SETTINGS_TJA_INCLUDE_HEADER"),
+							UI_Str("SETTINGS_TJA_INCLUDE_HEADER_DESC")),
 
 						SettingsGui::SettingsEntry(
 							settings.General.DrumrollPreviewRollsPerSecond,
-							"General: Drumroll Preview Rolls per Second",
-							"The number of drumroll hit sounds previewed per second.",
+							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW"),
+							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW_DESC"),
 							SettingsGui::WidgetType::F32_DrumrollRollsPerSecond),
 
 						SettingsGui::SettingsEntry(
 							settings.General.DisplayTimeInSongSpace,
-							"General: Time Display Space",
-							"Display time in either Chart Space (normalized starting at 00:00.000) or in Song Space (relative to song offset).",
+							UI_Str("SETTINGS_GENERAL_TIME_DISPLAY"),
+							UI_Str("SETTINGS_GENERAL_TIME_DISPLAY_DESC"),
 							SettingsGui::WidgetType::B8_ChartSongSpaceComboBox),
 
 						SettingsGui::SettingsEntry(
 							settings.General.TimelineScrollInvertMouseWheel,
-							"Timeline: Invert Scroll Wheel Direction",
-							"Invert the mouse wheel scroll direcion so that scrolling downwards results in moving forward through the timeline."),
+							UI_Str("SETTINGS_TIMELINE_INVERT_SCROLL"),
+							UI_Str("SETTINGS_TIMELINE_INVERT_SCROLL_DESC")),
 
 						SettingsGui::SettingsEntry(
 							settings.General.TimelineScrollDistancePerMouseWheelTick,
-							"Timeline: Scroll Wheel Sensitivity",
-							"The timeline distance moved per mouse wheel scroll tick.",
+							UI_Str("SETTINGS_TIMELINE_SCROLL_SENSITIVITY"),
+							UI_Str("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_DESC"),
 							SettingsGui::WidgetType::F32_TimelineScrollSensitivity),
 
 						SettingsGui::SettingsEntry(
 							settings.General.TimelineScrollDistancePerMouseWheelTickFast,
-							"Timeline: Scroll Wheel Sensitivity (Shift)",
-							"The timeline distance moved per mouse wheel scroll tick while holding down shift.",
+							UI_Str("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_SHIFT"),
+							UI_Str("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_SHIFT_DESC"),
 							SettingsGui::WidgetType::F32_TimelineScrollSensitivity),
 
 						SettingsGui::SettingsEntry(settings.Animation.EnableGuiScaleAnimation,
-							"Animation: Smooth UI Zoom",
-							"Smoothly animate between UI zoom levels."),
+							UI_Str("SETTINGS_ANIMATION_SMOOTH_ZOOM"),
+							UI_Str("SETTINGS_ANIMATION_SMOOTH_ZOOM_DESC")),
 
 						SettingsGui::SettingsEntry(settings.Animation.TimelineSmoothScrollSpeed,
-							"Animation: Timeline Smooth Scroll Speed",
-							"The animation speed when scrolling the timeline.",
+							UI_Str("SETTINGS_ANIMATION_SCROLL_SPEED"),
+							UI_Str("SETTINGS_ANIMATION_SCROLL_SPEED_DESC"),
 							SettingsGui::WidgetType::F32_ExponentialSpeed),
 
 						SettingsGui::SettingsEntry(settings.Animation.TimelineWorldSpaceCursorXSpeed,
-							"Animation: Timeline Smooth Cursor Speed",
-							"The animation speed for the timeline cursor when moving to a new position.",
+							UI_Str("SETTINGS_ANIMATION_CURSOR_SPEED"),
+							UI_Str("SETTINGS_ANIMATION_CURSOR_SPEED_DESC"),
 							SettingsGui::WidgetType::F32_ExponentialSpeed),
 
 						SettingsGui::SettingsEntry(settings.Animation.TimelineRangeSelectionExpansionSpeed,
-							"Animation: Timeline Range Selection Speed",
-							"The animation speed for the timeline range selection expansion.",
+							UI_Str("SETTINGS_ANIMATION_RANGE_SPEED"),
+							UI_Str("SETTINGS_ANIMATION_RANGE_SPEED_DESC"),
 							SettingsGui::WidgetType::F32_ExponentialSpeed),
 					};
 
@@ -787,7 +788,7 @@ namespace PeepoDrumKit
 				Gui::EndTabItem();
 			}
 
-			if (Gui::BeginTabItem("Input Bindings"))
+			if (Gui::BeginTabItem(UI_Str("SETTINGS_TAB_INPUT_BINDINGS")))
 			{
 				Gui::PushStyleVar(ImGuiStyleVar_FramePadding, originalFramePadding);
 				{
@@ -909,7 +910,7 @@ namespace PeepoDrumKit
 				Gui::EndTabItem();
 			}
 
-			if (Gui::BeginTabItem("Audio Settings"))
+			if (Gui::BeginTabItem(UI_Str("SETTINGS_TAB_AUDIO")))
 			{
 				Gui::PushStyleVar(ImGuiStyleVar_FramePadding, originalFramePadding);
 				{
@@ -917,26 +918,24 @@ namespace PeepoDrumKit
 					{
 						SettingsGui::SettingsEntry(
 							settings.Audio.OpenDeviceOnStartup,
-							"Open Device on Startup",
-							"Create an audio session as soon as the program starts."),
+							UI_Str("SETTINGS_AUDIO_OPEN_STARTUP"),
+							UI_Str("SETTINGS_AUDIO_OPEN_STARTUP_DESC")),
 
 						SettingsGui::SettingsEntry(
 							settings.Audio.CloseDeviceOnIdleFocusLoss,
-							"Close Device on Idle Focus Loss",
-							"Automatically close the audio session when loosing window focus and while not playing any sounds."),
+							UI_Str("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS"),
+							UI_Str("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS_DESC")),
 
 						SettingsGui::SettingsEntry(
 							settings.Audio.RequestExclusiveDeviceAccess,
-							"Low-Latency Exclusive Mode",
-							"Reduce audio latency by requesting exlusive device access.\n"
-							"This will prevent all *other* applications from playing back or recording audio.",
+							UI_Str("SETTINGS_AUDIO_EXCLUSIVE_MODE"),
+							UI_Str("SETTINGS_AUDIO_EXCLUSIVE_MODE_DESC"),
 							SettingsGui::WidgetType::B8_ExclusiveAudioComboBox),
 
 						SettingsGui::SettingsEntry(
 							settings.Audio.BufferFrameSize,
-							"Buffer Frame Size",
-							"Prevent audio distortion by requesting sufficient buffer size (adding audio latency).\n"
-							"The minimum resulting size is the minimum possible size reported by the device.",
+							UI_Str("SETTINGS_AUDIO_BUFFER_SIZE"),
+							UI_Str("SETTINGS_AUDIO_BUFFER_SIZE_DESC"),
 							SettingsGui::WidgetType::I32_AudioBufferFrameSize),
 					};
 

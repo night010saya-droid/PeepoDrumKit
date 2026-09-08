@@ -47,6 +47,56 @@ X("TAB_CHART_STATS",								"Chart Stats") \
 X("TAB_TJA_EXPORT_DEBUG_VIEW",						"TJA Export Debug View") \
 X("TAB_TJA_IMPORT_TEST",							"TJA Import Test") \
 X("TAB_AUDIO_TEST",									"Audio Test") \
+/* settings window */ \
+X("SETTINGS_TAB_GENERAL", "General Settings") \
+X("SETTINGS_TAB_INPUT_BINDINGS", "Input Bindings") \
+X("SETTINGS_TAB_AUDIO", "Audio Settings") \
+X("SETTINGS_GENERAL_DEFAULT_CREATOR", "General: Default Creator Name") \
+X("SETTINGS_GENERAL_DEFAULT_CREATOR_DESC", "The name that is automatically filled in when creating a new chart.") \
+X("SETTINGS_TJA_SAVE_FORMAT", "TJA: File Save Format") \
+X("SETTINGS_TJA_SAVE_FORMAT_DESC", "Select the encoding and line ending used when saving TJA files.") \
+X("SETTINGS_TJA_INCLUDE_HEADER", "TJA: Include PeepoDrumKit Header") \
+X("SETTINGS_TJA_INCLUDE_HEADER_DESC", "Include the PeepoDrumKit identification comment when saving TJA files.") \
+X("SETTINGS_GENERAL_DRUMROLL_PREVIEW", "General: Drumroll Preview Rolls per Second") \
+X("SETTINGS_GENERAL_DRUMROLL_PREVIEW_DESC", "The number of drumroll hit sounds previewed per second.") \
+X("SETTINGS_GENERAL_TIME_DISPLAY", "General: Time Display Space") \
+X("SETTINGS_GENERAL_TIME_DISPLAY_DESC", "Display time in either Chart Space (normalized starting at 00:00.000) or in Song Space (relative to song offset).") \
+X("SETTINGS_TIMELINE_INVERT_SCROLL", "Timeline: Invert Scroll Wheel Direction") \
+X("SETTINGS_TIMELINE_INVERT_SCROLL_DESC", "Invert the mouse wheel scroll direction so that scrolling downwards results in moving forward through the timeline.") \
+X("SETTINGS_TIMELINE_SCROLL_SENSITIVITY", "Timeline: Scroll Wheel Sensitivity") \
+X("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_DESC", "The timeline distance moved per mouse wheel scroll tick.") \
+X("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_SHIFT", "Timeline: Scroll Wheel Sensitivity (Shift)") \
+X("SETTINGS_TIMELINE_SCROLL_SENSITIVITY_SHIFT_DESC", "The timeline distance moved per mouse wheel scroll tick while holding down shift.") \
+X("SETTINGS_ANIMATION_SMOOTH_ZOOM", "Animation: Smooth UI Zoom") \
+X("SETTINGS_ANIMATION_SMOOTH_ZOOM_DESC", "Smoothly animate between UI zoom levels.") \
+X("SETTINGS_ANIMATION_SCROLL_SPEED", "Animation: Timeline Smooth Scroll Speed") \
+X("SETTINGS_ANIMATION_SCROLL_SPEED_DESC", "The animation speed when scrolling the timeline.") \
+X("SETTINGS_ANIMATION_CURSOR_SPEED", "Animation: Timeline Smooth Cursor Speed") \
+X("SETTINGS_ANIMATION_CURSOR_SPEED_DESC", "The animation speed for the timeline cursor when moving to a new position.") \
+X("SETTINGS_ANIMATION_RANGE_SPEED", "Animation: Timeline Range Selection Speed") \
+X("SETTINGS_ANIMATION_RANGE_SPEED_DESC", "The animation speed for the timeline range selection expansion.") \
+X("SETTINGS_AUDIO_OPEN_STARTUP", "Open Device on Startup") \
+X("SETTINGS_AUDIO_OPEN_STARTUP_DESC", "Create an audio session as soon as the program starts.") \
+X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS", "Close Device on Idle Focus Loss") \
+X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS_DESC", "Automatically close the audio session when losing window focus and while not playing any sounds.") \
+X("SETTINGS_AUDIO_EXCLUSIVE_MODE", "Low-Latency Exclusive Mode") \
+X("SETTINGS_AUDIO_EXCLUSIVE_MODE_DESC", "Reduce audio latency by requesting exclusive device access. This will prevent other applications from playing back or recording audio.") \
+X("SETTINGS_AUDIO_BUFFER_SIZE", "Buffer Frame Size") \
+X("SETTINGS_AUDIO_BUFFER_SIZE_DESC", "Prevent audio distortion by requesting sufficient buffer size (adding audio latency). The minimum resulting size is the minimum possible size reported by the device.") \
+X("SETTINGS_SEARCH_HINT", "Type to search...") \
+X("SETTINGS_RESET_DEFAULT", "Reset to Default") \
+X("SETTINGS_SONG_SPACE", "Song Space") \
+X("SETTINGS_CHART_SPACE", "Chart Space") \
+X("SETTINGS_TRUE_EXCLUSIVE", "True (Exclusive Mode)") \
+X("SETTINGS_FALSE", "False") \
+X("SETTINGS_DISABLE_ANIMATION", "Disable Animation") \
+X("SETTINGS_CLEAR_ALL", "Clear All") \
+X("SETTINGS_ACTION", "Action") \
+X("SETTINGS_BINDING", "Binding") \
+X("SETTINGS_REVERT_CHANGES", "Revert Changes") \
+X("SETTINGS_UP", "Up") \
+X("SETTINGS_DOWN", "Down") \
+X("SETTINGS_REMOVE", "Remove") \
 /* menu names */ \
 X("MENU_FILE",										"File") \
 X("MENU_EDIT",										"Edit") \
