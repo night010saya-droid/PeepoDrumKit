@@ -436,8 +436,8 @@ namespace PeepoDrumKit
 		return out;
 	}
 
-	enum class InterpolationEasing : i32 { Linear, EaseIn, EaseOut, Count };
-	static constexpr cstr interpolationEasingNames[] = { "Linear", "Ease In", "Ease Out" };
+	enum class InterpolationEasing : i32 { Linear, EaseIn, EaseOut, Geometric, Count };
+	static constexpr cstr interpolationEasingNames[] = { "Linear", "Ease In", "Ease Out", "Geometric" };
 
 	static InterpolationEasing GetInterpolationEasing(std::string_view label)
 	{
@@ -450,9 +450,11 @@ namespace PeepoDrumKit
 	static f32 GetInterpolationEasingStrength(std::string_view label)
 	{
 		Gui::PushID(Gui::StringViewStart(label), Gui::StringViewEnd(label));
+		const i32 easingIndex = *Gui::GetStateStorage()->GetIntRef(Gui::GetID("Easing"), static_cast<i32>(InterpolationEasing::Linear));
 		f32& strength = *Gui::GetStateStorage()->GetFloatRef(Gui::GetID("EasingStrength"), 0.0f);
 		Gui::PopID();
-		return Clamp(strength, 0.0f, 2.0f);
+		const InterpolationEasing easing = static_cast<InterpolationEasing>(Clamp(easingIndex, 0, EnumCountI32<InterpolationEasing> - 1));
+		return Clamp(strength, easing == InterpolationEasing::Geometric ? 1.0f : 0.0f, 2.0f);
 	}
 
 	template <typename T>
@@ -473,8 +475,10 @@ namespace PeepoDrumKit
 			}
 			Gui::Spacing();
 			Gui::BeginDisabled(easing == InterpolationEasing::Linear);
+			const f32 easingStrengthMin = (easing == InterpolationEasing::Geometric) ? 1.0f : 0.0f;
+			easingStrength = Clamp(easingStrength, easingStrengthMin, 2.0f);
 			Gui::SetNextItemWidth(-1.0f);
-			if (Gui::SliderFloat("Easing strength", &easingStrength, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
+			if (Gui::SliderFloat(easing == InterpolationEasing::Geometric ? "Acceleration" : "Easing strength", &easingStrength, easingStrengthMin, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
 				wasValueChanged = true;
 			Gui::EndDisabled();
 			Gui::Spacing();
@@ -1420,6 +1424,20 @@ namespace PeepoDrumKit
 				return ConvertRange(getT(startItem), getT(endItem), startValue, endValue, getT(thisItem));
 
 			const f32 t = static_cast<f32>(ConvertRange(getT(startItem), getT(endItem), 0.0, 1.0, getT(thisItem)));
+			if (easing == InterpolationEasing::Geometric)
+			{
+				const f64 start = static_cast<f64>(startValue);
+				const f64 end = static_cast<f64>(endValue);
+				if (start == 0.0 || end == 0.0 || ((start < 0.0) != (end < 0.0)))
+					return Lerp<T>(startValue, endValue, t);
+
+				const f64 acceleration = static_cast<f64>(easingStrength);
+				const f64 exponent = (start <= end) ? acceleration : (1.0 / acceleration);
+				const f64 forward = start * std::pow(end / start, std::pow(static_cast<f64>(t), exponent));
+				const f64 backward = end * std::pow(start / end, std::pow(1.0 - static_cast<f64>(t), 1.0 / exponent));
+				return static_cast<T>((forward + backward) * 0.5);
+			}
+
 			const f32 easedTBase = (easing == InterpolationEasing::EaseIn) ? t * t : 1.0f - (1.0f - t) * (1.0f - t);
 			const f32 binaryT = (t < 0.5f) ? 0.0f : 1.0f;
 			const f32 easedT = (easingStrength <= 1.0f)
