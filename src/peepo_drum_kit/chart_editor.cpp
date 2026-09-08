@@ -53,6 +53,7 @@ namespace PeepoDrumKit
 	}
 
 	static b8 GlobalLastSetRequestExclusiveDeviceAccessAudioSetting = {};
+	static f32 GlobalLastSetMasterVolume = {};
 	static i32 GlobalLastSetAudioBufferFrameSize = {};
 
 	ChartEditor::ChartEditor()
@@ -68,7 +69,8 @@ namespace PeepoDrumKit
 		GlobalLastSetRequestExclusiveDeviceAccessAudioSetting = *Settings.Audio.RequestExclusiveDeviceAccess;
 		Audio::Engine.SetBackend(*Settings.Audio.RequestExclusiveDeviceAccess ? Audio::Backend::WASAPI_Exclusive : Audio::Backend::WASAPI_Shared);
 		Audio::Engine.SetBufferFrameSize(*Settings.Audio.BufferFrameSize);
-		Audio::Engine.SetMasterVolume(0.75f);
+		GlobalLastSetMasterVolume = *Settings.Audio.MasterVolume;
+		Audio::Engine.SetMasterVolume(GlobalLastSetMasterVolume);
 		if (*Settings.Audio.OpenDeviceOnStartup)
 			Audio::Engine.OpenStartStream();
 
@@ -94,16 +96,6 @@ namespace PeepoDrumKit
 	{
 		if (Gui::BeginMenuBar())
 		{
-			std::string nextLanguageToSelect = SelectedGuiLanguage;
-			defer {
-				if (nextLanguageToSelect != SelectedGuiLanguage)
-				{
-					SelectedGuiLanguage = nextLanguageToSelect;
-					SelectedGuiLanguageTJA = ASCII::IETFLangTagToTJALangTag(SelectedGuiLanguage);
-					i18n::ReloadLocaleFile(SelectedGuiLanguage.c_str());
-				}
-			};
-
 			if (Gui::BeginMenu(UI_Str("MENU_FILE")))
 			{
 				if (Gui::MenuItem(UI_Str("ACT_FILE_NEW_CHART"), ToShortcutString(*Settings.Input.Editor_ChartNew).Data)) { CheckOpenSaveConfirmationPopupThenCall([&] { CreateNewChart(context); }); }
@@ -158,8 +150,6 @@ namespace PeepoDrumKit
 				if (Gui::MenuItem(UI_Str("ACT_EDIT_COPY"), ToShortcutString(*Settings.Input.Timeline_Copy).Data, nullptr, isAnyItemSelected)) { timeline.ExecuteClipboardAction(context, ClipboardAction::Copy); }
 				if (Gui::MenuItem(UI_Str("ACT_EDIT_PASTE"), ToShortcutString(*Settings.Input.Timeline_Paste).Data, nullptr, true)) { timeline.ExecuteClipboardAction(context, ClipboardAction::Paste); }
 				if (Gui::MenuItem(UI_Str("ACT_EDIT_DELETE"), ToShortcutString(*Settings.Input.Timeline_DeleteSelection).Data, nullptr, isAnyItemSelected)) { timeline.ExecuteClipboardAction(context, ClipboardAction::Delete); }
-				Gui::Separator();
-				if (Gui::MenuItem(UI_Str("TAB_SETTINGS"), ToShortcutString(*Settings.Input.Editor_OpenSettings).Data)) { PersistentApp.LastSession.ShowWindow_Settings = focusSettingsWindowNextFrame = true; }
 				Gui::EndMenu();
 			}
 
@@ -452,25 +442,10 @@ namespace PeepoDrumKit
 					Gui::EndMenu();
 				}
 
-				Gui::EndMenu();
-			}
-
-			if (Gui::BeginMenu(UI_Str("MENU_LANGUAGE")))
-			{
-				for (const auto& it : i18n::LocaleEntries)
-				{
-					// This should not be localized, just display as is
-					std::string buffer = it.name;
-					buffer += " (";
-					buffer += it.id;
-					buffer += ")";
-
-					if (Gui::MenuItem(buffer.c_str(), 0, SelectedGuiLanguage == it.id))
-						nextLanguageToSelect = it.id;
-				}
 				Gui::Separator();
-				if (Gui::MenuItem("Export Builtin Locale Files"))
-					i18n::ExportBuiltinLocaleFiles();
+				if (Gui::MenuItem(UI_Str("TAB_CHART_STATS"), ToShortcutString(*Settings.Input.Editor_OpenChartStats).Data)) { PersistentApp.LastSession.ShowWindow_ChartStats = focusChartStatsWindowNextFrame = true; }
+				if (Gui::MenuItem(UI_Str("TAB_SETTINGS"), ToShortcutString(*Settings.Input.Editor_OpenSettings).Data)) { PersistentApp.LastSession.ShowWindow_Settings = focusSettingsWindowNextFrame = true; }
+
 				Gui::EndMenu();
 			}
 
@@ -513,7 +488,6 @@ namespace PeepoDrumKit
 				Gui::Separator();
 				if (Gui::MenuItem(UI_Str("TAB_USAGE_GUIDE"), ToShortcutString(*Settings.Input.Editor_OpenHelp).Data)) { PersistentApp.LastSession.ShowWindow_Help = focusHelpWindowNextFrame = true; }
 				if (Gui::MenuItem(UI_Str("TAB_UPDATE_NOTES"), ToShortcutString(*Settings.Input.Editor_OpenUpdateNotes).Data)) { PersistentApp.LastSession.ShowWindow_UpdateNotes = focusUpdateNotesWindowNextFrame = true; }
-				if (Gui::MenuItem(UI_Str("TAB_CHART_STATS"), ToShortcutString(*Settings.Input.Editor_OpenChartStats).Data)) { PersistentApp.LastSession.ShowWindow_ChartStats = focusChartStatsWindowNextFrame = true; }
 				Gui::EndMenu();
 			}
 
@@ -904,6 +878,11 @@ namespace PeepoDrumKit
 		{
 			Audio::Engine.SetBufferFrameSize(*Settings.Audio.BufferFrameSize);
 			GlobalLastSetAudioBufferFrameSize = *Settings.Audio.BufferFrameSize;
+		}
+		if (GlobalLastSetMasterVolume != *Settings.Audio.MasterVolume)
+		{
+			Audio::Engine.SetMasterVolume(*Settings.Audio.MasterVolume);
+			GlobalLastSetMasterVolume = *Settings.Audio.MasterVolume;
 		}
 		EnableGuiScaleAnimation = *Settings.Animation.EnableGuiScaleAnimation;
 

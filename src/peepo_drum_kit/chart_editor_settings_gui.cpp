@@ -138,7 +138,7 @@ namespace PeepoDrumKit
 
 		enum class WidgetType : u32 {
 			Default,
-			B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox, F32_DrumrollRollsPerSecond,
+			B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox, F32_DrumrollRollsPerSecond, F32_AudioMasterVolume,
 			F32_TimelineScrollSensitivity, F32_ExponentialSpeed, I32_TJAFileSaveFormat,
 			I32_AudioBufferFrameSize,
 		};
@@ -272,6 +272,16 @@ namespace PeepoDrumKit
 						changesWereMade |= Gui::InputFloat("##", &inOutF32->Value, 1.0f, 10.0f, "%.2f rolls/s");
 						if (changesWereMade)
 							inOutF32->Value = Clamp(inOutF32->Value, 0.1f, 100.0f);
+					}
+					else if (in.Widget == WidgetType::F32_AudioMasterVolume)
+					{
+						f32 volumePercent = ToPercent(inOutF32->Value);
+						Gui::SetNextItemWidth(-1.0f);
+						if (Gui::SliderFloat("##", &volumePercent, ToPercent(Audio::AudioEngine::MinVolume), ToPercent(Audio::AudioEngine::MaxVolume), "%.0f%%", ImGuiSliderFlags_AlwaysClamp))
+						{
+							inOutF32->Value = FromPercent(volumePercent);
+							changesWereMade = true;
+						}
 					}
 					else if (in.Widget == WidgetType::F32_TimelineScrollSensitivity)
 					{
@@ -734,12 +744,6 @@ namespace PeepoDrumKit
 							UI_Str("SETTINGS_TJA_INCLUDE_HEADER_DESC")),
 
 						SettingsGui::SettingsEntry(
-							settings.General.DrumrollPreviewRollsPerSecond,
-							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW"),
-							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW_DESC"),
-							SettingsGui::WidgetType::F32_DrumrollRollsPerSecond),
-
-						SettingsGui::SettingsEntry(
 							settings.General.DisplayTimeInSongSpace,
 							UI_Str("SETTINGS_GENERAL_TIME_DISPLAY"),
 							UI_Str("SETTINGS_GENERAL_TIME_DISPLAY_DESC"),
@@ -917,6 +921,18 @@ namespace PeepoDrumKit
 					SettingsGui::SettingsEntry settingsEntriesAudio[] =
 					{
 						SettingsGui::SettingsEntry(
+							settings.Audio.MasterVolume,
+							UI_Str("SETTINGS_AUDIO_MASTER_VOLUME"),
+							UI_Str("SETTINGS_AUDIO_MASTER_VOLUME_DESC"),
+							SettingsGui::WidgetType::F32_AudioMasterVolume),
+
+						SettingsGui::SettingsEntry(
+							settings.General.DrumrollPreviewRollsPerSecond,
+							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW"),
+							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW_DESC"),
+							SettingsGui::WidgetType::F32_DrumrollRollsPerSecond),
+
+						SettingsGui::SettingsEntry(
 							settings.Audio.OpenDeviceOnStartup,
 							UI_Str("SETTINGS_AUDIO_OPEN_STARTUP"),
 							UI_Str("SETTINGS_AUDIO_OPEN_STARTUP_DESC")),
@@ -940,6 +956,47 @@ namespace PeepoDrumKit
 					};
 
 					changesWereMade |= SettingsGui::DrawEntriesListTableGui(settingsEntriesAudio, ArrayCount(settingsEntriesAudio), nullptr, lastActiveGroup);
+				}
+				Gui::PopStyleVar();
+				Gui::EndTabItem();
+			}
+
+			if (Gui::BeginTabItem(UI_Str("SETTINGS_TAB_LANGUAGE")))
+			{
+				Gui::PushStyleVar(ImGuiStyleVar_FramePadding, originalFramePadding);
+				{
+					std::string selectedLanguageName = SelectedGuiLanguage;
+					for (const auto& it : i18n::LocaleEntries)
+					{
+						if (SelectedGuiLanguage == it.id)
+						{
+							selectedLanguageName = it.name + " (" + it.id + ")";
+							break;
+						}
+					}
+
+					Gui::AlignTextToFramePadding();
+					Gui::TextUnformatted(UI_Str("SETTINGS_GENERAL_LANGUAGE"));
+					Gui::SameLine();
+					Gui::SetNextItemWidth(-1.0f);
+					if (Gui::BeginCombo("##SettingsLanguage", selectedLanguageName.c_str(), ImGuiComboFlags_None))
+					{
+						for (const auto& it : i18n::LocaleEntries)
+						{
+							std::string languageName = it.name + " (" + it.id + ")";
+							const b8 isSelected = (SelectedGuiLanguage == it.id);
+							if (Gui::Selectable(languageName.c_str(), isSelected))
+							{
+								SelectedGuiLanguage = it.id;
+								SelectedGuiLanguageTJA = ASCII::IETFLangTagToTJALangTag(SelectedGuiLanguage);
+								i18n::ReloadLocaleFile(SelectedGuiLanguage.c_str());
+							}
+							if (isSelected) Gui::SetItemDefaultFocus();
+						}
+						Gui::EndCombo();
+					}
+					if (Gui::Button(UI_Str("SETTINGS_GENERAL_EXPORT_BUILTIN_LOCALE_FILES"), { Gui::CalcItemWidth(), 0.0f }))
+						i18n::ExportBuiltinLocaleFiles();
 				}
 				Gui::PopStyleVar();
 				Gui::EndTabItem();

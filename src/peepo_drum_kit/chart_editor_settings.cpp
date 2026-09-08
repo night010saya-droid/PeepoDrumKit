@@ -378,6 +378,7 @@ namespace PeepoDrumKit
 		});
 
 		out.General.DrumrollPreviewRollsPerSecond.Value = Clamp(out.General.DrumrollPreviewRollsPerSecond.Value, 0.1f, 100.0f);
+		out.Audio.MasterVolume.Value = Clamp(out.Audio.MasterVolume.Value, 0.0f, 1.0f);
 		out.General.TJAFileSaveFormat.Value = Clamp(out.General.TJAFileSaveFormat.Value, 0, 1);
 
 		return parser.Result;
@@ -471,6 +472,7 @@ namespace PeepoDrumKit
 			X(Audio.OpenDeviceOnStartup, "open_device_on_startup");
 			X(Audio.CloseDeviceOnIdleFocusLoss, "close_device_on_idle_focus_loss");
 			X(Audio.RequestExclusiveDeviceAccess, "request_exclusive_device_access");
+			X(Audio.MasterVolume, "master_volume");
 			X(Audio.BufferFrameSize, "buffer_frame_size");
 
 			SECTION("animation");

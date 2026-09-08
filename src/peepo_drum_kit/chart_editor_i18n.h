@@ -51,6 +51,9 @@ X("TAB_AUDIO_TEST",									"Audio Test") \
 X("SETTINGS_TAB_GENERAL", "General Settings") \
 X("SETTINGS_TAB_INPUT_BINDINGS", "Input Bindings") \
 X("SETTINGS_TAB_AUDIO", "Audio Settings") \
+X("SETTINGS_TAB_LANGUAGE", "Language Settings") \
+X("SETTINGS_GENERAL_LANGUAGE", "Language") \
+X("SETTINGS_GENERAL_EXPORT_BUILTIN_LOCALE_FILES", "Export Builtin Locale Files") \
 X("SETTINGS_GENERAL_DEFAULT_CREATOR", "General: Default Creator Name") \
 X("SETTINGS_GENERAL_DEFAULT_CREATOR_DESC", "The name that is automatically filled in when creating a new chart.") \
 X("SETTINGS_TJA_SAVE_FORMAT", "TJA: File Save Format") \
@@ -77,6 +80,8 @@ X("SETTINGS_ANIMATION_RANGE_SPEED", "Animation: Timeline Range Selection Speed")
 X("SETTINGS_ANIMATION_RANGE_SPEED_DESC", "The animation speed for the timeline range selection expansion.") \
 X("SETTINGS_AUDIO_OPEN_STARTUP", "Open Device on Startup") \
 X("SETTINGS_AUDIO_OPEN_STARTUP_DESC", "Create an audio session as soon as the program starts.") \
+X("SETTINGS_AUDIO_MASTER_VOLUME", "Master Volume") \
+X("SETTINGS_AUDIO_MASTER_VOLUME_DESC", "Set the application's master volume.") \
 X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS", "Close Device on Idle Focus Loss") \
 X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS_DESC", "Automatically close the audio session when losing window focus and while not playing any sounds.") \
 X("SETTINGS_AUDIO_EXCLUSIVE_MODE", "Low-Latency Exclusive Mode") \
