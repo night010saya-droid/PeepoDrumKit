@@ -160,6 +160,9 @@ namespace PeepoDrumKit
 			for (const auto& v : typedList)
 				maxBeat = Max(maxBeat, GetBeat(v) + Max(Beat::Zero(), GetBeatDuration(v)));
 		}, course);
+		for (const BranchRange& branch : course.Branches) maxBeat = Max(maxBeat, branch.GetEnd());
+		for (Beat beat : course.BranchSections) maxBeat = Max(maxBeat, beat);
+		for (Beat beat : course.BranchLevelHolds) maxBeat = Max(maxBeat, beat);
 		return maxBeat;
 	}
 
@@ -174,6 +177,9 @@ namespace PeepoDrumKit
 				maxBeat = Max(maxBeat, GetBeat(last) + Max(Beat::Zero(), GetBeatDuration(last)));
 			}
 		}, course);
+		for (const BranchRange& branch : course.Branches) maxBeat = Max(maxBeat, branch.GetEnd());
+		for (Beat beat : course.BranchSections) maxBeat = Max(maxBeat, beat);
+		for (Beat beat : course.BranchLevelHolds) maxBeat = Max(maxBeat, beat);
 		return maxBeat;
 	}
 
@@ -221,48 +227,78 @@ namespace PeepoDrumKit
 			outCourse.TempoMap.Signature.Sorted = { TimeSignatureChange(Beat::Zero(), TimeSignature(4, 4)) };
 			TimeSignature lastSignature = TimeSignature(4, 4);
 
-			i32 currentBalloonIndex = 0;
-
-			BeatSortedList<TempTimedDelayCommand> tempSortedDelayCommands;
-			BeatSortedForwardIterator<TempTimedDelayCommand> tempDelayCommandsIt;
-			for (const TJA::ConvertedMeasure& inMeasure : inCourse.Measures)
+			auto importNotes = [&](const std::vector<TJA::ConvertedMeasure>& measures, SortedNotesList& outNotes, const std::vector<i32>& balloonPopCounts)
 			{
-				for (const TJA::ConvertedDelayChange& inDelayChange : inMeasure.DelayChanges)
-					tempSortedDelayCommands.InsertOrUpdate(TempTimedDelayCommand { inMeasure.StartTime + inDelayChange.TimeWithinMeasure, inDelayChange.Delay });
+				i32 currentBalloonIndex = 0;
+				BeatSortedList<TempTimedDelayCommand> tempSortedDelayCommands;
+				BeatSortedForwardIterator<TempTimedDelayCommand> tempDelayCommandsIt;
+				for (const TJA::ConvertedMeasure& inMeasure : measures)
+				{
+					for (const TJA::ConvertedDelayChange& inDelayChange : inMeasure.DelayChanges)
+						tempSortedDelayCommands.InsertOrUpdate(TempTimedDelayCommand { inMeasure.StartTime + inDelayChange.TimeWithinMeasure, inDelayChange.Delay });
+				}
+
+				for (const TJA::ConvertedMeasure& inMeasure : measures)
+				{
+					for (const TJA::ConvertedNote& inNote : inMeasure.Notes)
+					{
+						if (inNote.Type == TJA::NoteType::End_BalloonOrDrumroll)
+						{
+							if (!outNotes.Sorted.empty())
+								outNotes.Sorted.back().BeatDuration = (inMeasure.StartTime + inNote.TimeWithinMeasure) - outNotes.Sorted.back().BeatTime;
+							continue;
+						}
+
+						const NoteType outNoteType = ConvertTJANoteType(inNote.Type);
+						if (outNoteType == NoteType::Count)
+							continue;
+
+						Note& outNote = outNotes.Sorted.emplace_back();
+						outNote.BeatTime = (inMeasure.StartTime + inNote.TimeWithinMeasure);
+						outNote.Type = outNoteType;
+
+						const TempTimedDelayCommand* delayCommandForThisNote = tempDelayCommandsIt.Next(tempSortedDelayCommands.Sorted, outNote.BeatTime);
+						outNote.TimeOffset = (delayCommandForThisNote != nullptr) ? delayCommandForThisNote->Delay : Time::Zero();
+
+						if (IsBalloonNote(outNote.Type))
+						{
+							if (InBounds(currentBalloonIndex, balloonPopCounts))
+								outNote.BalloonPopCount = balloonPopCounts[currentBalloonIndex];
+							currentBalloonIndex++;
+						}
+					}
+				}
+			};
+
+			const auto& balloonNormal = !inCourse.CourseMetadata.BALLOON_Normal.empty() ? inCourse.CourseMetadata.BALLOON_Normal : inCourse.CourseMetadata.BALLOON;
+			const auto& balloonExpert = !inCourse.CourseMetadata.BALLOON_Expert.empty() ? inCourse.CourseMetadata.BALLOON_Expert : inCourse.CourseMetadata.BALLOON;
+			const auto& balloonMaster = !inCourse.CourseMetadata.BALLOON_Master.empty() ? inCourse.CourseMetadata.BALLOON_Master : inCourse.CourseMetadata.BALLOON;
+			importNotes(inCourse.Measures, outCourse.Notes_Normal, balloonNormal);
+			if (!inCourse.Branches.empty())
+			{
+				importNotes(inCourse.Measures_Expert, outCourse.Notes_Expert, balloonExpert);
+				importNotes(inCourse.Measures_Master, outCourse.Notes_Master, balloonMaster);
+			}
+			auto importScrollChanges = [](const std::vector<TJA::ConvertedMeasure>& measures, SortedScrollChangesList& outScrollChanges)
+			{
+				for (const TJA::ConvertedMeasure& measure : measures)
+					for (const TJA::ConvertedScrollChange& scrollChange : measure.ScrollChanges)
+						outScrollChanges.Sorted.push_back(ScrollChange { measure.StartTime + scrollChange.TimeWithinMeasure, scrollChange.ScrollSpeed });
+			};
+			importScrollChanges(inCourse.Measures, outCourse.ScrollChanges_Normal);
+			if (!inCourse.Branches.empty())
+			{
+				importScrollChanges(inCourse.Measures_Expert, outCourse.ScrollChanges_Expert);
+				importScrollChanges(inCourse.Measures_Master, outCourse.ScrollChanges_Master);
+			}
+			else
+			{
+				outCourse.ScrollChanges_Expert = outCourse.ScrollChanges_Normal;
+				outCourse.ScrollChanges_Master = outCourse.ScrollChanges_Normal;
 			}
 
 			for (const TJA::ConvertedMeasure& inMeasure : inCourse.Measures)
 			{
-				for (const TJA::ConvertedNote& inNote : inMeasure.Notes)
-				{
-					if (inNote.Type == TJA::NoteType::End_BalloonOrDrumroll)
-					{
-						// TODO: Proper handling
-						if (!outCourse.Notes_Normal.Sorted.empty())
-							outCourse.Notes_Normal.Sorted.back().BeatDuration = (inMeasure.StartTime + inNote.TimeWithinMeasure) - outCourse.Notes_Normal.Sorted.back().BeatTime;
-						continue;
-					}
-
-					const NoteType outNoteType = ConvertTJANoteType(inNote.Type);
-					if (outNoteType == NoteType::Count)
-						continue;
-
-					Note& outNote = outCourse.Notes_Normal.Sorted.emplace_back();
-					outNote.BeatTime = (inMeasure.StartTime + inNote.TimeWithinMeasure);
-					outNote.Type = outNoteType;
-
-					const TempTimedDelayCommand* delayCommandForThisNote = tempDelayCommandsIt.Next(tempSortedDelayCommands.Sorted, outNote.BeatTime);
-					outNote.TimeOffset = (delayCommandForThisNote != nullptr) ? delayCommandForThisNote->Delay : Time::Zero();
-
-					if (inNote.Type == TJA::NoteType::Start_Balloon || inNote.Type == TJA::NoteType::Start_BaloonSpecial || inNote.Type == TJA::NoteType::Fuse)
-					{
-						// TODO: Implement properly with correct branch handling
-						if (InBounds(currentBalloonIndex, inCourse.CourseMetadata.BALLOON))
-							outNote.BalloonPopCount = inCourse.CourseMetadata.BALLOON[currentBalloonIndex];
-						currentBalloonIndex++;
-					}
-				}
-
 				if (inMeasure.TimeSignature != lastSignature)
 				{
 					outCourse.TempoMap.Signature.InsertOrUpdate(TimeSignatureChange(inMeasure.StartTime, inMeasure.TimeSignature));
@@ -271,9 +307,6 @@ namespace PeepoDrumKit
 
 				for (const TJA::ConvertedTempoChange& inTempoChange : inMeasure.TempoChanges)
 					outCourse.TempoMap.Tempo.InsertOrUpdate(TempoChange(inMeasure.StartTime + inTempoChange.TimeWithinMeasure, inTempoChange.Tempo));
-
-				for (const TJA::ConvertedScrollChange& inScrollChange : inMeasure.ScrollChanges)
-					outCourse.ScrollChanges.Sorted.push_back(ScrollChange { (inMeasure.StartTime + inScrollChange.TimeWithinMeasure), inScrollChange.ScrollSpeed });
 
 				for (const TJA::ConvertedScrollType& inScrollType : inMeasure.ScrollTypes)
 					outCourse.ScrollTypes.Sorted.push_back(ScrollType{ (inMeasure.StartTime + inScrollType.TimeWithinMeasure),  static_cast<ScrollMethod>(inScrollType.Method) });
@@ -294,6 +327,13 @@ namespace PeepoDrumKit
 
 			for (const TJA::ConvertedGoGoRange& inGoGoRange : inCourse.GoGoRanges)
 				outCourse.GoGoRanges.Sorted.push_back(GoGoRange { inGoGoRange.StartTime, (inGoGoRange.EndTime - inGoGoRange.StartTime) });
+			for (const TJA::ConvertedMeasure& inMeasure : inCourse.Measures)
+				for (Beat sectionTime : inMeasure.BranchSectionChanges)
+					outCourse.BranchSections.push_back(inMeasure.StartTime + sectionTime);
+
+			for (const TJA::ConvertedBranch& inBranch : inCourse.Branches)
+				outCourse.Branches.push_back(BranchRange { inBranch.StartTime, inBranch.EndTime - inBranch.StartTime, inBranch.Condition, inBranch.RequirementExpert, inBranch.RequirementMaster });
+			outCourse.BranchLevelHolds = inCourse.BranchLevelHolds;
 
 			//outCourse.TempoMap.SetTempoChange(TempoChange());
 			//outCourse.TempoMap = inCourse.GoGoRanges;
@@ -371,6 +411,13 @@ namespace PeepoDrumKit
 			outCourse.Metadata.START_PLAYERSIDE = inCourse.PlayerSide;
 			outCourse.Metadata.NOTESDESIGNER = inCourse.CourseCreator;
 			for (const Note& inNote : inCourse.Notes_Normal) if (IsBalloonNote(inNote.Type)) { outCourse.Metadata.BALLOON.push_back(inNote.BalloonPopCount); }
+			const b8 hasNonZeroLengthBranch = std::any_of(inCourse.Branches.begin(), inCourse.Branches.end(), [](const BranchRange& branch) { return branch.BeatDuration > Beat::Zero(); });
+			if (hasNonZeroLengthBranch)
+			{
+				for (const Note& inNote : inCourse.Notes_Normal) if (IsBalloonNote(inNote.Type)) { outCourse.Metadata.BALLOON_Normal.push_back(inNote.BalloonPopCount); }
+				for (const Note& inNote : inCourse.Notes_Expert) if (IsBalloonNote(inNote.Type)) { outCourse.Metadata.BALLOON_Expert.push_back(inNote.BalloonPopCount); }
+				for (const Note& inNote : inCourse.Notes_Master) if (IsBalloonNote(inNote.Type)) { outCourse.Metadata.BALLOON_Master.push_back(inNote.BalloonPopCount); }
+			}
 			// outCourse.Metadata.SCOREINIT = inCourse.ScoreInit;
 			// outCourse.Metadata.SCOREDIFF = inCourse.ScoreDiff;
 
@@ -427,34 +474,42 @@ namespace PeepoDrumKit
 				}
 			}
 
-			Time lastNoteTimeOffset = Time::Zero();
-			for (const Note& inNote : inCourse.Notes_Normal)
+			auto appendNotesToMeasures = [&](const SortedNotesList& notes, std::vector<TJA::ConvertedMeasure>& measures)
 			{
-				TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(outConvertedMeasures, inNote.BeatTime);
-				if (assert(outConvertedMeasure != nullptr); outConvertedMeasure != nullptr)
-					outConvertedMeasure->Notes.push_back(TJA::ConvertedNote { (inNote.BeatTime - outConvertedMeasure->StartTime), ConvertTJANoteType(inNote.Type) });
-
-				if (inNote.BeatDuration > Beat::Zero())
+				Time lastNoteTimeOffset = Time::Zero();
+				for (const Note& inNote : notes)
 				{
-					TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(outConvertedMeasures, inNote.BeatTime + inNote.BeatDuration);
+					TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(measures, inNote.BeatTime);
 					if (assert(outConvertedMeasure != nullptr); outConvertedMeasure != nullptr)
-						outConvertedMeasure->Notes.push_back(TJA::ConvertedNote { ((inNote.BeatTime + inNote.BeatDuration) - outConvertedMeasure->StartTime), TJA::NoteType::End_BalloonOrDrumroll });
-				}
+						outConvertedMeasure->Notes.push_back(TJA::ConvertedNote { (inNote.BeatTime - outConvertedMeasure->StartTime), ConvertTJANoteType(inNote.Type) });
 
-				const Time thisNoteTimeOffset = ApproxmiatelySame(inNote.TimeOffset.Seconds, 0.0) ? Time::Zero() : inNote.TimeOffset;
-				if (thisNoteTimeOffset != lastNoteTimeOffset)
-				{
-					outConvertedMeasure->DelayChanges.push_back(TJA::ConvertedDelayChange { (inNote.BeatTime - outConvertedMeasure->StartTime), thisNoteTimeOffset });
-					lastNoteTimeOffset = thisNoteTimeOffset;
-				}
-			}
+					if (inNote.BeatDuration > Beat::Zero())
+					{
+						TJA::ConvertedMeasure* durationEndMeasure = tryFindMeasureForBeat(measures, inNote.BeatTime + inNote.BeatDuration);
+						if (assert(durationEndMeasure != nullptr); durationEndMeasure != nullptr)
+							durationEndMeasure->Notes.push_back(TJA::ConvertedNote { ((inNote.BeatTime + inNote.BeatDuration) - durationEndMeasure->StartTime), TJA::NoteType::End_BalloonOrDrumroll });
+					}
 
-			for (const ScrollChange& inScroll : inCourse.ScrollChanges)
+					const Time thisNoteTimeOffset = ApproxmiatelySame(inNote.TimeOffset.Seconds, 0.0) ? Time::Zero() : inNote.TimeOffset;
+					if (thisNoteTimeOffset != lastNoteTimeOffset)
+					{
+						outConvertedMeasure->DelayChanges.push_back(TJA::ConvertedDelayChange { (inNote.BeatTime - outConvertedMeasure->StartTime), thisNoteTimeOffset });
+						lastNoteTimeOffset = thisNoteTimeOffset;
+					}
+				}
+			};
+			appendNotesToMeasures(inCourse.Notes_Normal, outConvertedMeasures);
+
+			auto appendScrollChangesToMeasures = [&](const SortedScrollChangesList& scrollChanges, std::vector<TJA::ConvertedMeasure>& measures)
 			{
-				TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(outConvertedMeasures, inScroll.BeatTime);
-				if (assert(outConvertedMeasure != nullptr); outConvertedMeasure != nullptr)
-					outConvertedMeasure->ScrollChanges.push_back(TJA::ConvertedScrollChange { (inScroll.BeatTime - outConvertedMeasure->StartTime), inScroll.ScrollSpeed });
-			}
+				for (const ScrollChange& inScroll : scrollChanges)
+				{
+					TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(measures, inScroll.BeatTime);
+					if (assert(outConvertedMeasure != nullptr); outConvertedMeasure != nullptr)
+						outConvertedMeasure->ScrollChanges.push_back(TJA::ConvertedScrollChange { (inScroll.BeatTime - outConvertedMeasure->StartTime), inScroll.ScrollSpeed });
+				}
+			};
+			appendScrollChangesToMeasures(inCourse.ScrollChanges_Normal, outConvertedMeasures);
 
 			for (const ScrollType& inScrollType : inCourse.ScrollTypes)
 			{
@@ -505,9 +560,272 @@ namespace PeepoDrumKit
 					outConvertedMeasureEnd->GoGoChanges.push_back(TJA::ConvertedGoGoChange{ (endTime - outConvertedMeasureEnd->StartTime), false });
 			}
 
-			TJA::ConvertConvertedMeasuresToParsedCommands(outConvertedMeasures, outCourse.ChartCommands);
+			for (Beat sectionBeat : inCourse.BranchSections)
+			{
+				TJA::ConvertedMeasure* outConvertedMeasure = tryFindMeasureForBeat(outConvertedMeasures, sectionBeat);
+				if (assert(outConvertedMeasure != nullptr); outConvertedMeasure != nullptr)
+					outConvertedMeasure->BranchSectionChanges.push_back(sectionBeat - outConvertedMeasure->StartTime);
+			}
+
+			if (inCourse.Branches.empty())
+			{
+				TJA::ConvertConvertedMeasuresToParsedCommands(outConvertedMeasures, outCourse.ChartCommands);
+				continue;
+			}
+
+			std::array<std::vector<TJA::ConvertedMeasure>, 3> measuresByBranch = {
+				outConvertedMeasures,
+				outConvertedMeasures,
+				outConvertedMeasures,
+			};
+			for (size_t branchIndex = 1; branchIndex < measuresByBranch.size(); branchIndex++)
+			{
+				for (TJA::ConvertedMeasure& measure : measuresByBranch[branchIndex])
+				{
+					measure.Notes.clear();
+					measure.DelayChanges.clear();
+					measure.ScrollChanges.clear();
+					measure.BranchSectionChanges.clear();
+				}
+			}
+			appendNotesToMeasures(inCourse.Notes_Expert, measuresByBranch[EnumToIndex(BranchType::Expert)]);
+			appendNotesToMeasures(inCourse.Notes_Master, measuresByBranch[EnumToIndex(BranchType::Master)]);
+			appendScrollChangesToMeasures(inCourse.ScrollChanges_Expert, measuresByBranch[EnumToIndex(BranchType::Expert)]);
+			appendScrollChangesToMeasures(inCourse.ScrollChanges_Master, measuresByBranch[EnumToIndex(BranchType::Master)]);
+
+			std::array<std::vector<TJA::ParsedChartCommand>, 3> commandsByBranch;
+			for (size_t branchIndex = 0; branchIndex < commandsByBranch.size(); branchIndex++)
+				TJA::ConvertConvertedMeasuresToParsedCommands(measuresByBranch[branchIndex], commandsByBranch[branchIndex]);
+
+			auto groupCommandsByMeasure = [](std::vector<TJA::ParsedChartCommand>& commands)
+			{
+				std::vector<std::vector<TJA::ParsedChartCommand>> groups(1);
+				for (TJA::ParsedChartCommand& command : commands)
+				{
+					groups.back().push_back(std::move(command));
+					if (groups.back().back().Type == TJA::ParsedChartCommandType::MeasureEnd)
+						groups.emplace_back();
+				}
+				if (groups.back().empty())
+					groups.pop_back();
+				return groups;
+			};
+
+			std::array<std::vector<std::vector<TJA::ParsedChartCommand>>, 3> commandGroupsByBranch;
+			for (size_t branchIndex = 0; branchIndex < commandsByBranch.size(); branchIndex++)
+				commandGroupsByBranch[branchIndex] = groupCommandsByMeasure(commandsByBranch[branchIndex]);
+
+			auto beatToMeasureIndex = [&](Beat beat)
+			{
+				auto it = std::lower_bound(outConvertedMeasures.begin(), outConvertedMeasures.end(), beat,
+					[](const TJA::ConvertedMeasure& measure, Beat value) { return measure.StartTime < value; });
+				if (it != outConvertedMeasures.end() && it->StartTime == beat)
+					return static_cast<size_t>(it - outConvertedMeasures.begin());
+				return static_cast<size_t>(std::upper_bound(outConvertedMeasures.begin(), outConvertedMeasures.end(), beat,
+					[](Beat value, const TJA::ConvertedMeasure& measure) { return value < measure.StartTime; }) - outConvertedMeasures.begin());
+			};
+
+			std::vector<BranchRange> branches = inCourse.Branches;
+			std::sort(branches.begin(), branches.end(), [](const BranchRange& a, const BranchRange& b) { return a.BeatTime < b.BeatTime; });
+			std::vector<Beat> levelHolds = inCourse.BranchLevelHolds;
+			std::sort(levelHolds.begin(), levelHolds.end());
+			size_t levelHoldIndex = 0;
+			auto appendLevelHoldsAt = [&](Beat beat)
+			{
+				while (levelHoldIndex < levelHolds.size() && levelHolds[levelHoldIndex] <= beat)
+				{
+					outCourse.ChartCommands.push_back(TJA::ParsedChartCommand { TJA::ParsedChartCommandType::BranchLevelHold });
+					levelHoldIndex++;
+				}
+			};
+			auto appendMeasureGroup = [&](BranchType branch, size_t measureIndex)
+			{
+				auto& groups = commandGroupsByBranch[EnumToIndex(branch)];
+				if (measureIndex < groups.size())
+					for (TJA::ParsedChartCommand& command : groups[measureIndex])
+						outCourse.ChartCommands.push_back(std::move(command));
+			};
+
+			size_t currentMeasureIndex = 0;
+			for (const BranchRange& branch : branches)
+			{
+				const size_t startMeasureIndex = beatToMeasureIndex(branch.GetStart());
+				const size_t endMeasureIndex = beatToMeasureIndex(branch.GetEnd());
+				if (startMeasureIndex < currentMeasureIndex || endMeasureIndex < startMeasureIndex || endMeasureIndex > outConvertedMeasures.size())
+					continue;
+
+				for (; currentMeasureIndex < startMeasureIndex; currentMeasureIndex++)
+				{
+					appendLevelHoldsAt(outConvertedMeasures[currentMeasureIndex].StartTime);
+					appendMeasureGroup(BranchType::Normal, currentMeasureIndex);
+				}
+				appendLevelHoldsAt(branch.GetStart());
+
+				TJA::ParsedChartCommand branchStart { TJA::ParsedChartCommandType::BranchStart };
+				branchStart.Param.BranchStart = { branch.Condition, branch.RequirementExpert, branch.RequirementMaster };
+				outCourse.ChartCommands.push_back(branchStart);
+				if (branch.BeatDuration > Beat::Zero())
+				{
+					for (BranchType branchType = BranchType::Normal; branchType < BranchType::Count; IncrementEnum(branchType))
+					{
+						const auto selector = (branchType == BranchType::Normal) ? TJA::ParsedChartCommandType::BranchNormal
+							: (branchType == BranchType::Expert) ? TJA::ParsedChartCommandType::BranchExpert
+							: TJA::ParsedChartCommandType::BranchMaster;
+						outCourse.ChartCommands.push_back(TJA::ParsedChartCommand { selector });
+						for (size_t measureIndex = startMeasureIndex; measureIndex < endMeasureIndex; measureIndex++)
+							appendMeasureGroup(branchType, measureIndex);
+					}
+				}
+				outCourse.ChartCommands.push_back(TJA::ParsedChartCommand { TJA::ParsedChartCommandType::BranchEnd });
+				currentMeasureIndex = endMeasureIndex;
+			}
+
+			for (; currentMeasureIndex < outConvertedMeasures.size(); currentMeasureIndex++)
+			{
+				appendLevelHoldsAt(outConvertedMeasures[currentMeasureIndex].StartTime);
+				appendMeasureGroup(BranchType::Normal, currentMeasureIndex);
+			}
+			while (levelHoldIndex < levelHolds.size())
+			{
+				outCourse.ChartCommands.push_back(TJA::ParsedChartCommand { TJA::ParsedChartCommandType::BranchLevelHold });
+				levelHoldIndex++;
+			}
 		}
 
+		return true;
+	}
+
+	b8 RunTJAChartBranchSelfTest(std::string& outError)
+	{
+		static constexpr std::string_view source =
+			"TITLE:Branch Test\n"
+			"BPM:120\n"
+			"COURSE:Oni\n"
+			"LEVEL:5\n"
+			"BALLOONNOR:5\n"
+			"BALLOONEXP:6\n"
+			"BALLOONMAS:7\n"
+			"#START\n"
+			"1111,\n"
+			"#SECTION\n"
+			"#LEVELHOLD\n"
+			"#BRANCHSTART p,70,80\n"
+			"#N\n"
+			"#SCROLL 1.25\n"
+			"7008,\n"
+			"#E\n"
+			"#SCROLL 1.5\n"
+			"2000,\n"
+			"#M\n"
+			"#SCROLL 2\n"
+			"3000,\n"
+			"#BRANCHEND\n"
+			"1111,\n"
+			"#END\n";
+
+		auto parse = [&](std::string_view text, TJA::ParsedTJA& out)
+		{
+			if (UTF8::HasBOM(text)) text = UTF8::TrimBOM(text);
+			TJA::ErrorList errors;
+			out = TJA::ParseTokens(TJA::TokenizeLines(TJA::SplitLines(text)), errors);
+			if (!errors.Errors.empty())
+			{
+				outError = errors.Errors.front().Description;
+				return false;
+			}
+			return true;
+		};
+		auto fail = [&](cstr message) { outError = message; return false; };
+
+		TJA::ParsedTJA parsed;
+		if (!parse(source, parsed))
+			return false;
+		ChartProject chart;
+		if (!CreateChartProjectFromTJA(parsed, chart) || chart.Courses.size() != 1)
+			return fail("Failed to create a single-course branch chart");
+
+		ChartCourse& course = *chart.Courses.front();
+		if (course.Branches.size() != 1 || course.BranchSections.size() != 1 || course.BranchLevelHolds.size() != 1)
+			return fail("Branch range, #SECTION, or #LEVELHOLD was not imported");
+		if (course.Branches[0].Condition != TJA::BranchCondition::Precise || course.Branches[0].RequirementExpert != 70 || course.Branches[0].RequirementMaster != 80)
+			return fail("Branch condition was not imported");
+
+		const Beat branchStart = Beat::FromBars(1);
+		const Note* normal = course.Notes_Normal.TryFindExactAtBeat(branchStart);
+		const Note* expert = course.Notes_Expert.TryFindExactAtBeat(branchStart);
+		const Note* master = course.Notes_Master.TryFindExactAtBeat(branchStart);
+		if (normal == nullptr || normal->Type != NoteType::Balloon || normal->BalloonPopCount != 5)
+			return fail("Normal branch note was not imported");
+		if (expert == nullptr || expert->Type != NoteType::Ka)
+			return fail("Expert branch note was not imported");
+		if (master == nullptr || master->Type != NoteType::DonBig)
+			return fail("Master branch note was not imported");
+		const ScrollChange* normalScroll = course.ScrollChanges_Normal.TryFindExactAtBeat(branchStart);
+		const ScrollChange* expertScroll = course.ScrollChanges_Expert.TryFindExactAtBeat(branchStart);
+		const ScrollChange* masterScroll = course.ScrollChanges_Master.TryFindExactAtBeat(branchStart);
+		if (normalScroll == nullptr || normalScroll->ScrollSpeed != Complex(1.25f, 0.0f)
+			|| expertScroll == nullptr || expertScroll->ScrollSpeed != Complex(1.5f, 0.0f)
+			|| masterScroll == nullptr || masterScroll->ScrollSpeed != Complex(2.0f, 0.0f))
+			return fail("Branch scroll speeds were not imported separately");
+
+		const Beat zeroLengthBranchBeat = Beat::FromBars(3);
+		course.Branches.push_back(BranchRange { zeroLengthBranchBeat, Beat::Zero(), TJA::BranchCondition::Precise, 50, 75 });
+
+		TJA::ParsedTJA exported;
+		if (!ConvertChartProjectToTJA(chart, exported, false))
+			return fail("Failed to export branch chart");
+		std::string exportedText;
+		TJA::ConvertParsedToText(exported, exportedText, TJA::SaveFormat::Current);
+		for (std::string_view marker : { "#SECTION", "#BRANCHSTART p,70,80", "#N", "#E", "#M", "#BRANCHEND", "#LEVELHOLD", "BALLOONNOR:5", "BALLOONEXP:", "BALLOONMAS:" })
+			if (exportedText.find(marker) == std::string::npos)
+				return fail("Exported TJA is missing branch data");
+		auto countOccurrences = [](std::string_view text, std::string_view value)
+		{
+			size_t count = 0;
+			for (size_t offset = 0; (offset = text.find(value, offset)) != std::string_view::npos; offset += value.size())
+				count++;
+			return count;
+		};
+		if (countOccurrences(exportedText, "\n#N\n") != 1 || countOccurrences(exportedText, "\n#E\n") != 1 || countOccurrences(exportedText, "\n#M\n") != 1)
+			return fail("Zero-length branch unexpectedly exported branch selectors");
+
+		TJA::ParsedTJA reparsed;
+		if (!parse(exportedText, reparsed))
+			return false;
+		ChartProject roundTripped;
+		if (!CreateChartProjectFromTJA(reparsed, roundTripped) || roundTripped.Courses.size() != 1 || roundTripped.Courses[0]->Branches.size() != 2)
+			return fail("Exported branch chart could not be imported again");
+		if (roundTripped.Courses[0]->BranchSections.size() != 1)
+			return fail("#SECTION was lost during round trip");
+		if (roundTripped.Courses[0]->Branches[1].GetStart() != zeroLengthBranchBeat || roundTripped.Courses[0]->Branches[1].BeatDuration != Beat::Zero())
+			return fail("Zero-length branch was lost during round trip");
+		if (roundTripped.Courses[0]->Notes_Expert.TryFindExactAtBeat(branchStart) == nullptr || roundTripped.Courses[0]->Notes_Master.TryFindExactAtBeat(branchStart) == nullptr)
+			return fail("Branch notes were lost during round trip");
+		const ChartCourse& roundTrippedCourse = *roundTripped.Courses[0];
+		const ScrollChange* roundTrippedNormalScroll = roundTrippedCourse.ScrollChanges_Normal.TryFindExactAtBeat(branchStart);
+		const ScrollChange* roundTrippedExpertScroll = roundTrippedCourse.ScrollChanges_Expert.TryFindExactAtBeat(branchStart);
+		const ScrollChange* roundTrippedMasterScroll = roundTrippedCourse.ScrollChanges_Master.TryFindExactAtBeat(branchStart);
+		if (roundTrippedNormalScroll == nullptr || roundTrippedNormalScroll->ScrollSpeed != Complex(1.25f, 0.0f)
+			|| roundTrippedExpertScroll == nullptr || roundTrippedExpertScroll->ScrollSpeed != Complex(1.5f, 0.0f)
+			|| roundTrippedMasterScroll == nullptr || roundTrippedMasterScroll->ScrollSpeed != Complex(2.0f, 0.0f))
+			return fail("Branch scroll speeds were lost during round trip");
+
+		ChartCourse& zeroLengthOnlyCourse = *roundTripped.Courses[0];
+		zeroLengthOnlyCourse.Branches.erase(std::remove_if(zeroLengthOnlyCourse.Branches.begin(), zeroLengthOnlyCourse.Branches.end(),
+			[](const BranchRange& branch) { return branch.BeatDuration > Beat::Zero(); }), zeroLengthOnlyCourse.Branches.end());
+		TJA::ParsedTJA zeroLengthOnlyExported;
+		if (!ConvertChartProjectToTJA(roundTripped, zeroLengthOnlyExported, false))
+			return fail("Failed to export zero-length-only branch chart");
+		std::string zeroLengthOnlyText;
+		TJA::ConvertParsedToText(zeroLengthOnlyExported, zeroLengthOnlyText, TJA::SaveFormat::Current);
+		if (zeroLengthOnlyText.find("BALLOONNOR:") != std::string::npos || zeroLengthOnlyText.find("BALLOONEXP:") != std::string::npos || zeroLengthOnlyText.find("BALLOONMAS:") != std::string::npos)
+			return fail("Zero-length-only branch chart unexpectedly exported branch balloon metadata");
+		if (zeroLengthOnlyText.find("\n#N\n") != std::string::npos || zeroLengthOnlyText.find("\n#E\n") != std::string::npos || zeroLengthOnlyText.find("\n#M\n") != std::string::npos)
+			return fail("Zero-length-only branch chart unexpectedly exported branch selectors");
+		if (zeroLengthOnlyText.find("#BRANCHSTART") == std::string::npos || zeroLengthOnlyText.find("#BRANCHEND") == std::string::npos)
+			return fail("Zero-length-only branch commands were not exported");
+
+		outError.clear();
 		return true;
 	}
 }

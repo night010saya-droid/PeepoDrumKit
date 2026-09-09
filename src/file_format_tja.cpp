@@ -664,9 +664,9 @@ namespace TJA
 					case Key::Course_BALLOON: { if (!tryParseCommaSeparatedValues(in, &out.BALLOON)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } } break;
 					case Key::Course_SCOREINIT: READ_AS_OTHER({ if (!tryParseDefaultForEmpty(in, &out.SCOREINIT, 0)) { outErrors.Push(lineIndex, "Invalid int '%.*s'", FmtStrViewArgs(in)); } }); break;
 					case Key::Course_SCOREDIFF: READ_AS_OTHER({ if (!tryParseDefaultForEmpty(in, &out.SCOREDIFF, 0)) { outErrors.Push(lineIndex, "Invalid int '%.*s'", FmtStrViewArgs(in)); } }); break;
-					case Key::Course_BALLOONNOR: READ_AS_OTHER({ if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Normal)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } }); break;
-					case Key::Course_BALLOONEXP: READ_AS_OTHER({ if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Expert)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } }); break;
-					case Key::Course_BALLOONMAS: READ_AS_OTHER({ if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Master)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } }); break;
+					case Key::Course_BALLOONNOR: { if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Normal)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } } break;
+					case Key::Course_BALLOONEXP: { if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Expert)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } } break;
+					case Key::Course_BALLOONMAS: { if (!tryParseCommaSeparatedValues(in, &out.BALLOON_Master)) { outErrors.Push(lineIndex, "Invalid int in comma separated list '%.*s'", FmtStrViewArgs(in)); } } break;
 					case Key::Course_STYLE: { if (!tryParseStyleMode(in, &out.STYLE)) { outErrors.Push(lineIndex, "Unknown or invalid style mode '%.*s'", FmtStrViewArgs(in)); } } break;
 					case Key::Course_EXPLICIT: READ_AS_OTHER({ if (!ASCII::TryParse(in, out.EXPLICIT)) { outErrors.Push(lineIndex, "Invalid int '%.*s'", FmtStrViewArgs(in)); } }); break;
 					case Key::Course_NOTESDESIGNERs:
@@ -1311,14 +1311,14 @@ namespace TJA
 			}
 
 			// Better to be explicit
-			if (!course.Metadata.BALLOON.empty() /* || !course.Metadata.BALLOON_Normal.empty() || !course.Metadata.BALLOON_Expert.empty() || !course.Metadata.BALLOON_Master.empty() */)
+			if (!course.Metadata.BALLOON.empty())
 				appendBalloonProperyLine(out, Key::Course_BALLOON, course.Metadata.BALLOON); // necessary for branched charts as branched BALLOON headers are not handled consistently across all simulators
-			// if (!course.Metadata.BALLOON_Normal.empty() || !course.Metadata.BALLOON_Expert.empty() || !course.Metadata.BALLOON_Master.empty())
-			// {
-			// 	appendBalloonProperyLine(out, Key::Course_BALLOONNOR, course.Metadata.BALLOON_Normal);
-			// 	appendBalloonProperyLine(out, Key::Course_BALLOONEXP, course.Metadata.BALLOON_Expert);
-			// 	appendBalloonProperyLine(out, Key::Course_BALLOONMAS, course.Metadata.BALLOON_Master);
-			// }
+			if (!course.Metadata.BALLOON_Normal.empty() || !course.Metadata.BALLOON_Expert.empty() || !course.Metadata.BALLOON_Master.empty())
+			{
+				appendBalloonProperyLine(out, Key::Course_BALLOONNOR, course.Metadata.BALLOON_Normal);
+				appendBalloonProperyLine(out, Key::Course_BALLOONEXP, course.Metadata.BALLOON_Expert);
+				appendBalloonProperyLine(out, Key::Course_BALLOONMAS, course.Metadata.BALLOON_Master);
+			}
 
 			// if (shouldEmitCourseMetadata(&ParsedCourseMetadata::SCOREINIT, &ParsedCourseMetadata::SCOREDIFF)) {
 			// 	appendProperyLine(out, Key::Course_SCOREINIT, (course.Metadata.SCOREINIT == 0) ? "" : std::string_view(buffer, sprintf_s(buffer, "%d", course.Metadata.SCOREINIT)));
@@ -1413,11 +1413,11 @@ namespace TJA
 				} break;
 				case ParsedChartCommandType::BranchLevelHold:
 				{
-					// TODO:
+					appendCommandLine(out, Key::Chart_LEVELHOLD, "");
 				} break;
 				case ParsedChartCommandType::ResetAccuracyValues:
 				{
-					// TODO:
+					appendCommandLine(out, Key::Chart_SECTION, "");
 				} break;
 				case ParsedChartCommandType::SetLyricLine:
 				{
@@ -1496,6 +1496,12 @@ namespace TJA
 			{
 				ParsedChartCommand& tempCommand = tempBuffer.emplace_back(TempCommand{ gogoChange.TimeWithinMeasure }).ParsedCommand;
 				tempCommand.Type = (gogoChange.IsGogo) ? ParsedChartCommandType::GoGoStart : ParsedChartCommandType::GoGoEnd;
+			}
+
+			for (Beat sectionTime : inMeasure.BranchSectionChanges)
+			{
+				ParsedChartCommand& tempCommand = tempBuffer.emplace_back(TempCommand { sectionTime }).ParsedCommand;
+				tempCommand.Type = ParsedChartCommandType::ResetAccuracyValues;
 			}
 
 			for (const ConvertedBarLineChange& barLineChange : inMeasure.BarLineChanges)
@@ -1659,14 +1665,14 @@ namespace TJA
 		}
 	}
 
-	ConvertedCourse ConvertParsedToConvertedCourse(const ParsedTJA& inContent, const ParsedCourse& inCourse)
+	static ConvertedCourse ConvertParsedToConvertedCourseSingle(const ParsedTJA& inContent, const ParsedCourse& inCourse, const std::vector<ParsedChartCommand>& chartCommands)
 	{
 		ConvertedCourse out = {};
 		out.MainMetadata = inContent.Metadata;
 		out.CourseMetadata = inCourse.Metadata;
 
 		{
-			const size_t measureCount = std::count_if(inCourse.ChartCommands.begin(), inCourse.ChartCommands.end(), [](auto& c) { return c.Type == ParsedChartCommandType::MeasureEnd; });
+			const size_t measureCount = std::count_if(chartCommands.begin(), chartCommands.end(), [](auto& c) { return c.Type == ParsedChartCommandType::MeasureEnd; });
 			out.Measures.reserve(measureCount + 1);
 		}
 
@@ -1675,7 +1681,7 @@ namespace TJA
 			ConvertedMeasure* currentMeasure = &out.Measures.emplace_back();
 			currentMeasure->TimeSignature = DefaultTimeSignature;
 
-			for (const ParsedChartCommand& command : inCourse.ChartCommands)
+			for (const ParsedChartCommand& command : chartCommands)
 			{
 				if (command.Type == ParsedChartCommandType::MeasureNotes)
 				{
@@ -1714,7 +1720,7 @@ namespace TJA
 			Beat currentTimeWithinMeasure = Beat::Zero();
 			i32 currentNotesInMeasure = 0;
 
-			for (const ParsedChartCommand& command : inCourse.ChartCommands)
+			for (const ParsedChartCommand& command : chartCommands)
 			{
 				if (command.Type == ParsedChartCommandType::MeasureNotes)
 				{
@@ -1756,6 +1762,10 @@ namespace TJA
 				else if (command.Type == ParsedChartCommandType::ChangeBarLine)
 				{
 					currentMeasure->BarLineChanges.push_back(ConvertedBarLineChange { currentTimeWithinMeasure, command.Param.ChangeBarLine.Visible });
+				}
+				else if (command.Type == ParsedChartCommandType::ResetAccuracyValues)
+				{
+					currentMeasure->BranchSectionChanges.push_back(currentTimeWithinMeasure);
 				}
 				else if (command.Type == ParsedChartCommandType::SetLyricLine)
 				{
@@ -1803,6 +1813,106 @@ namespace TJA
 					erase_remove_if(measure.Notes, [](const ConvertedNote& note) { return (note.Type == NoteType::None); });
 			}
 		}
+
+		return out;
+	}
+
+	ConvertedCourse ConvertParsedToConvertedCourse(const ParsedTJA& inContent, const ParsedCourse& inCourse)
+	{
+		enum class ConvertedBranchPath : u8 { Normal, Expert, Master, Count };
+		struct BranchMeasureRange
+		{
+			size_t StartMeasureIndex;
+			size_t EndMeasureIndex;
+			BranchCondition Condition;
+			i32 RequirementExpert;
+			i32 RequirementMaster;
+		};
+
+		std::array<std::vector<ParsedChartCommand>, 3> commandsByBranch;
+		std::vector<BranchMeasureRange> branchMeasureRanges;
+		std::vector<size_t> levelHoldMeasureIndices;
+		b8 isInsideBranch = false;
+		ConvertedBranchPath selectedBranch = ConvertedBranchPath::Count;
+		size_t normalMeasureCount = 0;
+
+		for (const ParsedChartCommand& command : inCourse.ChartCommands)
+		{
+			switch (command.Type)
+			{
+			case ParsedChartCommandType::BranchStart:
+				branchMeasureRanges.push_back({
+					normalMeasureCount,
+					normalMeasureCount,
+					command.Param.BranchStart.Condition,
+					command.Param.BranchStart.RequirementExpert,
+					command.Param.BranchStart.RequirementMaster,
+				});
+				isInsideBranch = true;
+				selectedBranch = ConvertedBranchPath::Count;
+				continue;
+			case ParsedChartCommandType::BranchNormal: selectedBranch = ConvertedBranchPath::Normal; continue;
+			case ParsedChartCommandType::BranchExpert: selectedBranch = ConvertedBranchPath::Expert; continue;
+			case ParsedChartCommandType::BranchMaster: selectedBranch = ConvertedBranchPath::Master; continue;
+			case ParsedChartCommandType::BranchEnd:
+				if (!branchMeasureRanges.empty())
+					branchMeasureRanges.back().EndMeasureIndex = normalMeasureCount;
+				isInsideBranch = false;
+				selectedBranch = ConvertedBranchPath::Count;
+				continue;
+			case ParsedChartCommandType::BranchLevelHold:
+				levelHoldMeasureIndices.push_back(normalMeasureCount);
+				continue;
+			default:
+				break;
+			}
+
+			if (!isInsideBranch || selectedBranch == ConvertedBranchPath::Count)
+			{
+				for (auto& branchCommands : commandsByBranch)
+					branchCommands.push_back(command);
+			}
+			else
+			{
+				commandsByBranch[EnumToIndex(selectedBranch)].push_back(command);
+			}
+
+			if (command.Type == ParsedChartCommandType::MeasureEnd &&
+				(!isInsideBranch || selectedBranch == ConvertedBranchPath::Normal || selectedBranch == ConvertedBranchPath::Count))
+				normalMeasureCount++;
+		}
+
+		ConvertedCourse out = ConvertParsedToConvertedCourseSingle(inContent, inCourse, commandsByBranch[EnumToIndex(ConvertedBranchPath::Normal)]);
+		if (branchMeasureRanges.empty())
+			return out;
+
+		ConvertedCourse expert = ConvertParsedToConvertedCourseSingle(inContent, inCourse, commandsByBranch[EnumToIndex(ConvertedBranchPath::Expert)]);
+		ConvertedCourse master = ConvertParsedToConvertedCourseSingle(inContent, inCourse, commandsByBranch[EnumToIndex(ConvertedBranchPath::Master)]);
+		out.Measures_Expert = std::move(expert.Measures);
+		out.Measures_Master = std::move(master.Measures);
+
+		const auto measureIndexToBeat = [&](size_t measureIndex)
+		{
+			if (measureIndex < out.Measures.size())
+				return out.Measures[measureIndex].StartTime;
+			if (out.Measures.empty())
+				return Beat::Zero();
+			const ConvertedMeasure& lastMeasure = out.Measures.back();
+			return lastMeasure.StartTime + abs(lastMeasure.TimeSignature.GetDurationPerBar());
+		};
+
+		for (const BranchMeasureRange& branch : branchMeasureRanges)
+		{
+			out.Branches.push_back({
+				measureIndexToBeat(branch.StartMeasureIndex),
+				measureIndexToBeat(branch.EndMeasureIndex),
+				branch.Condition,
+				branch.RequirementExpert,
+				branch.RequirementMaster,
+			});
+		}
+		for (size_t measureIndex : levelHoldMeasureIndices)
+			out.BranchLevelHolds.push_back(measureIndexToBeat(measureIndex));
 
 		return out;
 	}

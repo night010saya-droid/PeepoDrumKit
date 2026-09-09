@@ -76,6 +76,8 @@ namespace PeepoDrumKit
 	{
 		Tempo,
 		TimeSignature,
+		Notes,
+		BranchCommands,
 		Notes_Normal,
 		Notes_Expert,
 		Notes_Master,
@@ -97,6 +99,8 @@ namespace PeepoDrumKit
 		"EVENT_TEMPO",
 		"EVENT_TIME_SIGNATURE",
 		"EVENT_NOTES",
+		"EVENT_BRANCH_COMMANDS",
+		"EVENT_NOTES_NORMAL",
 		"EVENT_NOTES_EXPERT",
 		"EVENT_NOTES_MASTER",
 		"EVENT_SCROLL_SPEED",
@@ -114,10 +118,11 @@ namespace PeepoDrumKit
 		{
 		case TimelineRowType::Tempo: return GenericList::TempoChanges;
 		case TimelineRowType::TimeSignature: return GenericList::SignatureChanges;
+		case TimelineRowType::Notes: return GenericList::Notes_Normal;
 		case TimelineRowType::Notes_Normal: return GenericList::Notes_Normal;
 		case TimelineRowType::Notes_Expert: return GenericList::Notes_Expert;
-		case TimelineRowType::Notes_Master: return GenericList::Notes_Expert;
-		case TimelineRowType::ScrollSpeed: return GenericList::ScrollChanges;
+		case TimelineRowType::Notes_Master: return GenericList::Notes_Master;
+		case TimelineRowType::ScrollSpeed: return GenericList::ScrollChanges_Normal;
 		case TimelineRowType::BarLineVisibility: return GenericList::BarLineChanges;
 		case TimelineRowType::GoGoTime: return GenericList::GoGoRanges;
 		case TimelineRowType::Lyrics: return GenericList::Lyrics;
@@ -134,10 +139,12 @@ namespace PeepoDrumKit
 		{
 		case GenericList::TempoChanges: return TimelineRowType::Tempo;
 		case GenericList::SignatureChanges: return TimelineRowType::TimeSignature;
-		case GenericList::Notes_Normal: return TimelineRowType::Notes_Normal;
+		case GenericList::Notes_Normal: return TimelineRowType::Notes;
 		case GenericList::Notes_Expert: return TimelineRowType::Notes_Expert;
 		case GenericList::Notes_Master: return TimelineRowType::Notes_Master;
-		case GenericList::ScrollChanges: return TimelineRowType::ScrollSpeed;
+		case GenericList::ScrollChanges_Normal:
+		case GenericList::ScrollChanges_Expert:
+		case GenericList::ScrollChanges_Master: return TimelineRowType::ScrollSpeed;
 		case GenericList::BarLineChanges: return TimelineRowType::BarLineVisibility;
 		case GenericList::GoGoRanges: return TimelineRowType::GoGoTime;
 		case GenericList::Lyrics: return TimelineRowType::Lyrics;
@@ -148,12 +155,24 @@ namespace PeepoDrumKit
 		}
 	}
 
+	constexpr GenericList TimelineRowToGenericList(TimelineRowType row, BranchType branch)
+	{
+		if (row != TimelineRowType::ScrollSpeed)
+			return TimelineRowToGenericList(row);
+		return BranchTypeToScrollChangesList(branch);
+	}
+
 	constexpr BranchType TimelineRowToBranchType(TimelineRowType rowType)
 	{
 		return
 			(rowType == TimelineRowType::Notes_Normal) ? BranchType::Normal :
 			(rowType == TimelineRowType::Notes_Expert) ? BranchType::Expert :
 			(rowType == TimelineRowType::Notes_Master) ? BranchType::Master : BranchType::Count;
+	}
+
+	constexpr b8 IsBranchNoteRow(TimelineRowType rowType)
+	{
+		return rowType >= TimelineRowType::NoteBranches_First && rowType <= TimelineRowType::NoteBranches_Last;
 	}
 
 	struct TimelineRegion : Rect
@@ -331,6 +350,7 @@ namespace PeepoDrumKit
 		}
 
 		void DrawGui(ChartContext& context, b8 hasGamePreviewFocus = false);
+		void ScrollToBeat(ChartContext& context, Beat beat);
 
 		void StartEndRangeSelectionAtCursor(ChartContext& context);
 		void PlayNoteSoundAndHitAnimationsAtBeat(ChartContext& context, Beat cursorBeat);
@@ -371,7 +391,7 @@ namespace PeepoDrumKit
 		ChartCourse& course = *context.ChartSelectedCourse;
 
 		size_t nonTargetedEventSelectedItemCount = 0;
-		ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it) { nonTargetedEventSelectedItemCount += (it.List != List); });
+		ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { nonTargetedEventSelectedItemCount += (it.List != List); });
 		if (nonTargetedEventSelectedItemCount <= 0)
 			return;
 
@@ -392,7 +412,7 @@ namespace PeepoDrumKit
 			eventList = &get<List>(course);
 		}
 
-		ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+		ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				if (it.List != List)
 				{
@@ -433,7 +453,7 @@ namespace PeepoDrumKit
 		if (!eventsThatAlreadyExist.empty() || !eventsToAdd.empty())
 		{
 			if (*Settings.General.ConvertSelectionToScrollChanges_UnselectOld)
-				ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it) { SetIsSelected(false, it, course); });
+				ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { SetIsSelected(false, it, course); });
 
 			if (*Settings.General.ConvertSelectionToScrollChanges_SelectNew)
 			{

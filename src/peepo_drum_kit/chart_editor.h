@@ -102,6 +102,7 @@ namespace PeepoDrumKit
 		TempoCalculatorWindow tempoCalculatorWindow = {};
 		ChartInspectorWindow chartInspectorWindow = {};
 		ChartPropertiesWindow propertiesWindow = {};
+		ChartBranchWindow branchWindow = {};
 		ChartTempoWindow tempoWindow = {};
 		ChartLyricsWindow lyricsWindow = {};
 		ChartSettingsWindow settingsWindow = {};

@@ -407,6 +407,7 @@ namespace PeepoDrumKit
 	template <typename Func>
 	static void ForEachBarOnNoteLane(const ChartCourse& course, BranchType branch, Beat maxBeatDuration, std::function<Complex(Complex)> scrollTypeToView, Func perBarFunc)
 	{
+		const SortedScrollChangesList& scrollChanges = course.GetScrollChanges(branch);
 		BeatSortedForwardIterator<TempoChange> tempoChangeIt {};
 		BeatSortedForwardIterator<ScrollChange> scrollChangeIt {};
 		BeatSortedForwardIterator<BarLineChange> barLineChangeIt {};
@@ -427,7 +428,7 @@ namespace PeepoDrumKit
 			const Time time = course.TempoMap.BeatToTime(it.Beat);
 			perBarFunc(ForEachBarLaneData { it.Beat, time,
 				TempoOrDefault(tempoChangeIt.Next(course.TempoMap.Tempo.Sorted, it.Beat)),
-				scrollTypeToView(ScrollOrDefault(scrollChangeIt.Next(course.ScrollChanges.Sorted, it.Beat))),
+				scrollTypeToView(ScrollOrDefault(scrollChangeIt.Next(scrollChanges.Sorted, it.Beat))),
 				ScrollTypeOrDefault(scrollTypeIt.Next(course.ScrollTypes.Sorted, it.Beat)),
 				it.BarIndex });
 
@@ -444,6 +445,7 @@ namespace PeepoDrumKit
 	template <typename Func>
 	static void ForEachNoteOnNoteLane(ChartCourse& course, BranchType branch, std::function<Complex(Complex)> scrollSpeedToView, Func perNoteFunc)
 	{
+		const SortedScrollChangesList& scrollChanges = course.GetScrollChanges(branch);
 		BeatSortedForwardIterator<TempoChange> tempoChangeIt {};
 		BeatSortedForwardIterator<ScrollChange> scrollChangeIt {};
 		BeatSortedForwardIterator<ScrollType> scrollTypeIt {};
@@ -456,8 +458,8 @@ namespace PeepoDrumKit
 			const Time head = (course.TempoMap.BeatToTime(beat) + note.TimeOffset);
 			const Beat beatTail = (note.BeatDuration > Beat::Zero()) ? (beat + note.BeatDuration) : beat;
 			const Time tail = (note.BeatDuration > Beat::Zero()) ? (course.TempoMap.BeatToTime(beatTail) + note.TimeOffset) : head;
-			const Complex scrollSpeed = ScrollOrDefault(scrollChangeIt.Next(course.ScrollChanges.Sorted, beat));
-			const Complex scrollSpeedTail = ScrollOrDefault(scrollChangeIt.Next(course.ScrollChanges.Sorted, beatTail));
+			const Complex scrollSpeed = ScrollOrDefault(scrollChangeIt.Next(scrollChanges.Sorted, beat));
+			const Complex scrollSpeedTail = ScrollOrDefault(scrollChangeIt.Next(scrollChanges.Sorted, beatTail));
 			perNoteFunc(ForEachNoteLaneData {
 				{
 					beat, head,
@@ -622,7 +624,14 @@ namespace PeepoDrumKit
 		IsAnyChildWindowFocused = Gui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
 		const b8 IsAnyChildWindowHovered = Gui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
-		const i32 nLanes = size(context.ChartsCompared);
+		std::vector<std::pair<ChartCourse*, BranchType>> comparedLanes;
+		for (const auto& course : context.Chart.Courses)
+		{
+			if (auto compared = context.ChartsCompared.find(course.get()); compared != context.ChartsCompared.end())
+				for (BranchType branch : compared->second)
+					comparedLanes.emplace_back(course.get(), branch);
+		}
+		const i32 nLanes = static_cast<i32>(comparedLanes.size());
 		const ImGuiID guiID = Gui::GetItemID();
 
 		static constexpr vec2 buttonMargin = vec2(8.0f);
@@ -722,7 +731,7 @@ namespace PeepoDrumKit
 						// clear all selection
 						auto& course = *context.ChartSelectedCourse;
 						for (TimelineRowType rowType = {}; rowType < TimelineRowType::Count; IncrementEnum(rowType)) {
-							const GenericList list = TimelineRowToGenericList(rowType);
+							const GenericList list = TimelineRowToGenericList(rowType, context.ChartSelectedBranch);
 							for (size_t i = 0; i < GetGenericListCount(course, list); ++i)
 								TrySet<GenericMember::B8_IsSelected>(course, list, i, false);
 						}
@@ -747,13 +756,10 @@ namespace PeepoDrumKit
 		};
 
 		i32 iLane = -1;
-		for (auto it = cbegin(context.Chart.Courses); it != cend(context.Chart.Courses); ++it) {
-			auto* course = it->get();
-			auto branch = BranchType::Normal;
-			if (!context.IsChartCompared(course, branch))
-				continue;
-			Gui::PushID(it->get());
-			defer { Gui::PopID(); };
+		for (const auto& [course, branch] : comparedLanes) {
+			Gui::PushID(course);
+			Gui::PushID(EnumToIndex(branch));
+			defer { Gui::PopID(); Gui::PopID(); };
 			const b8 isFocusedLane = (context.CompareMode && course == context.ChartSelectedCourse && branch == context.ChartSelectedBranch);
 			++iLane;
 
@@ -818,7 +824,7 @@ namespace PeepoDrumKit
 			};
 			Gui::SetCursorScreenPos(laneRectScreen.TL);
 			if (Gui::InvisibleButton("##GamePreviewLane", laneRectScreen.GetSize(), ImGuiButtonFlags_AllowOverlap))
-				context.SetSelectedChart(it->get(), BranchType::Normal);
+				context.SetSelectedChart(course, branch);
 			Gui::SetItemAllowOverlap();
 
 			// NOTE: Lane left / right foreground borders, showing the standard lane size
