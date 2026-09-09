@@ -249,15 +249,17 @@ namespace PeepoDrumKit
 	};
 
 	template <typename Func>
-	static void ForEachTimelineRow(ChartTimeline& timeline, Func perRowFunc)
+	static void ForEachTimelineRow(ChartTimeline& timeline, const ChartCourse& course, Func perRowFunc)
 	{
 		f32 localY = -timeline.Camera.PositionCurrent.y;
 		for (TimelineRowType rowType = {}; rowType < TimelineRowType::Count; IncrementEnum(rowType))
 		{
+			const b8 hasBranches = !course.Branches.empty();
+			if ((rowType == TimelineRowType::BranchCommands && !hasBranches && course.BranchSections.empty()) ||
+				(IsBranchNoteRow(rowType) && !hasBranches))
+				continue;
 			// HACK: Draw the non default branches smaller for now to waste less space (might wanna rethink all of this...)
-			const b8 isNotesRow =
-				(rowType >= TimelineRowType::NoteBranches_First && rowType <= TimelineRowType::NoteBranches_Last) &&
-				(TimelineRowToBranchType(rowType) == BranchType::Normal);
+			const b8 isNotesRow = rowType == TimelineRowType::Notes || rowType == TimelineRowType::Notes_Normal;
 
 			const f32 localHeight = GuiScale(isNotesRow ? TimelineRowHeightNotes : TimelineRowHeight) * timeline.Camera.ZoomCurrent.y;
 
@@ -266,10 +268,10 @@ namespace PeepoDrumKit
 		}
 	}
 
-	static f32 GetTotalTimelineRowsHeight(const ChartTimeline& timeline)
+	static f32 GetTotalTimelineRowsHeight(const ChartTimeline& timeline, const ChartCourse& course)
 	{
 		f32 totalHeight = 0.0f;
-		ForEachTimelineRow(*const_cast<ChartTimeline*>(&timeline), [&](const ForEachRowData& it) { totalHeight += it.LocalHeight; });
+		ForEachTimelineRow(*const_cast<ChartTimeline*>(&timeline), course, [&](const ForEachRowData& it) { totalHeight += it.LocalHeight; });
 		return totalHeight;
 	}
 
@@ -383,6 +385,12 @@ namespace PeepoDrumKit
 	static void ScrollToTimelinePosition(TimelineCamera& camera, const TimelineRegions& regions, const ChartContext& context, Time targetTime, std::optional<Time> targetChartDuration = std::nullopt)
 	{
 		ScrollToTimelinePosition(camera, regions, context.Chart, *context.ChartSelectedCourse, targetTime, targetChartDuration);
+	}
+
+	void ChartTimeline::ScrollToBeat(ChartContext& context, Beat beat)
+	{
+		context.SetCursorBeat(beat);
+		ScrollToTimelinePosition(Camera, Regions, context, context.BeatToTime(beat));
 	}
 
 	static void ScrollToTimelinePositionNormalized(TimelineCamera& camera, const TimelineRegions& regions, const ChartProject& chart, const ChartCourse& course, f32 normalizedTargetPosition)
@@ -595,7 +603,7 @@ namespace PeepoDrumKit
 		DrawTimelineRectBaseWithStartEndTriangles(drawList, DrawTimelineRectBaseParam{ tl, br, 1.0f, 1.0f, selected ? TimelineJPOSScrollBackgroundColorBorderSelected : TimelineJPOSScrollBackgroundColorBorder, TimelineJPOSScrollBackgroundColorOuter, TimelineJPOSScrollBackgroundColorInner, selected });
 	}
 
-	static void DrawTimelineContentWaveform(const ChartTimeline& timeline, ImDrawList* drawList, Time chartSongOffset, const Audio::WaveformMipChain& waveformL, const Audio::WaveformMipChain& waveformR, f32 waveformAnimation)
+	static void DrawTimelineContentWaveform(const ChartTimeline& timeline, const ChartCourse& course, ImDrawList* drawList, Time chartSongOffset, const Audio::WaveformMipChain& waveformL, const Audio::WaveformMipChain& waveformR, f32 waveformAnimation)
 	{
 		const f32 waveformAnimationScale = Clamp(waveformAnimation, 0.0f, 1.0f);
 		const f32 waveformAnimationAlpha = (waveformAnimationScale * waveformAnimationScale);
@@ -607,7 +615,7 @@ namespace PeepoDrumKit
 		// parallax effect
 		const Rect contentRect = timeline.Regions.Content;
 		const f32 drawHeight = contentRect.GetHeight();
-		const f32 rowsHeight = GetTotalTimelineRowsHeight(timeline);
+		const f32 rowsHeight = GetTotalTimelineRowsHeight(timeline, course);
 		const f32 scrollYRange = std::max(0.0f, rowsHeight - drawHeight);
 		const f32 shiftAmount = std::min(drawHeight / 4, scrollYRange / 4);
 		f32 drawOffsetY = (drawHeight - drawHeight) / 2;
@@ -652,6 +660,65 @@ namespace PeepoDrumKit
 		Beat CursorBeatOnPlaybackStart;
 	};
 
+	static b8 IsBeatInsideBranchRange(const ChartCourse& course, Beat beat)
+	{
+		for (const BranchRange& branch : course.Branches)
+			if (beat >= branch.GetStart() && beat < branch.GetEnd())
+				return true;
+		return false;
+	}
+
+	static b8 IsNoteRangeValidForBranch(const ChartCourse& course, BranchType branch, Beat start, Beat end)
+	{
+		if (branch == BranchType::Normal)
+			return true;
+		for (const BranchRange& branchRange : course.Branches)
+			if (start >= branchRange.GetStart() && start < branchRange.GetEnd() && end <= branchRange.GetEnd())
+				return true;
+		return false;
+	}
+
+	static void DrawTimelineBranchCommands(DrawTimelineContentItemRowParam param, const ForEachRowData& rowIt)
+	{
+		ChartCourse& course = *param.Context.ChartSelectedCourse;
+		const f32 textHeight = Gui::GetFontSize();
+		auto drawCommand = [&](Beat beat, cstr text)
+		{
+			const Time time = param.Context.BeatToTime(beat);
+			if (time < param.VisibleTime.Min || time > param.VisibleTime.Max)
+				return;
+			const vec2 localTop = { param.Timeline.Camera.TimeToLocalSpaceX(time), rowIt.LocalY };
+			const vec2 localBottom = localTop + vec2(0.0f, rowIt.LocalHeight);
+			const vec2 textPosition = param.Timeline.LocalToScreenSpace(localTop + vec2(3.0f, (rowIt.LocalHeight - textHeight) * 0.5f));
+			param.DrawListContent->AddLine(param.Timeline.LocalToScreenSpace(localTop), param.Timeline.LocalToScreenSpace(localBottom), TimelineDefaultLineColor);
+			param.DrawListContent->AddRectFilled(textPosition, textPosition + Gui::CalcTextSize(text), TimelineBackgroundColor);
+			Gui::AddTextWithDropShadow(param.DrawListContent, textPosition, TimelineItemTextColor, text, TimelineItemTextColorShadow);
+		};
+		std::vector<std::pair<Beat, std::string>> commands;
+		auto appendCommand = [&](Beat beat, cstr text)
+		{
+			auto existing = std::find_if(commands.begin(), commands.end(), [&](const auto& command) { return command.first == beat; });
+			if (existing == commands.end())
+				commands.emplace_back(beat, text);
+			else
+				existing->second += std::string("  ") + text;
+		};
+		for (Beat sectionBeat : course.BranchSections)
+			appendCommand(sectionBeat, "#SECTION");
+		for (const BranchRange& branch : course.Branches)
+		{
+			if (branch.GetStart() == branch.GetEnd())
+				appendCommand(branch.GetStart(), "#BRANCHSTART  #BRANCHEND");
+			else
+			{
+				appendCommand(branch.GetStart(), "#BRANCHSTART");
+				appendCommand(branch.GetEnd(), "#BRANCHEND");
+			}
+		}
+		for (const auto& command : commands)
+			drawCommand(command.first, command.second.c_str());
+	}
+
 	template <typename T, TimelineRowType RowType>
 	static void DrawTimelineContentItemRowT(DrawTimelineContentItemRowParam param, const ForEachRowData& rowIt, const BeatSortedList<T>& list)
 	{
@@ -664,6 +731,8 @@ namespace PeepoDrumKit
 		// TODO: Do culling by first determining min/max visible beat times then use those to continue / break inside loop (although problematic with TimeOffset?)
 		if constexpr (std::is_same_v<T, Note>)
 		{
+			const ChartCourse& course = *context.ChartSelectedCourse;
+			static constexpr b8 isUnbranchedNotesRow = (RowType == TimelineRowType::Notes);
 			// TODO: Draw unselected branch notes grayed and at a slightly smaller scale (also nicely animate between selecting different branched!)
 
 			// TODO: It looks like there'll also have to be one scroll speed lane per branch type
@@ -671,6 +740,8 @@ namespace PeepoDrumKit
 
 			for (const Note& it : list)
 			{
+				if (IsBeatInsideBranchRange(course, it.BeatTime) == isUnbranchedNotesRow)
+					continue;
 				const Time startTime = context.BeatToTime(it.GetStart()) + it.TimeOffset;
 				const Time endTime = (it.BeatDuration > Beat::Zero()) ? context.BeatToTime(it.GetEnd()) + it.TimeOffset : startTime;
 				if (endTime < visibleTime.Min || startTime > visibleTime.Max)
@@ -708,7 +779,7 @@ namespace PeepoDrumKit
 				}
 			}
 
-			static constexpr BranchType branchForThisRow = TimelineRowToBranchType(RowType);
+			static constexpr BranchType branchForThisRow = isUnbranchedNotesRow ? BranchType::Normal : TimelineRowToBranchType(RowType);
 			if (!timeline.TempDeletedNoteAnimationsBuffer.empty())
 			{
 				for (const auto& data : timeline.TempDeletedNoteAnimationsBuffer)
@@ -741,7 +812,8 @@ namespace PeepoDrumKit
 			}
 
 			// NOTE: Long note placement preview
-			if (timeline.LongNotePlacement.IsActive && context.ChartSelectedBranch == branchForThisRow)
+			const b8 previewBelongsToRow = IsBeatInsideBranchRange(course, timeline.LongNotePlacement.GetMin()) != isUnbranchedNotesRow;
+			if (timeline.LongNotePlacement.IsActive && context.ChartSelectedBranch == branchForThisRow && previewBelongsToRow)
 			{
 				const Beat minBeatAfter = timeline.LongNotePlacement.GetMin(), maxBeat = timeline.LongNotePlacement.GetMax();
 				const vec2 localTL = vec2(timeline.Camera.TimeToLocalSpaceX(context.BeatToTime(minBeatAfter)), rowIt.LocalY);
@@ -1059,18 +1131,21 @@ namespace PeepoDrumKit
 				}
 			};
 
-			const i32 nLanes = size(context.ChartsCompared);
+			i32 nLanes = 0;
+			for (const auto& [course, branches] : context.ChartsCompared)
+				nLanes += static_cast<i32>(branches.size());
 			i32 iLane = -1;
 			for (auto it = cbegin(context.Chart.Courses); it != cend(context.Chart.Courses); ++it) {
 				const auto* course = it->get();
-				auto branch = BranchType::Normal;
-				if (!context.IsChartCompared(course, branch))
+				auto compared = context.ChartsCompared.find(course);
+				if (compared == context.ChartsCompared.end())
 					continue;
-				const b8 isFocusedLane = (context.CompareMode && course == context.ChartSelectedCourse && branch == context.ChartSelectedBranch);
-				++iLane;
-
-				for (const Note& note : course->GetNotes(branch))
-					handleNotePlayback(course, branch, note, nLanes, iLane);
+				for (BranchType branch : compared->second)
+				{
+					++iLane;
+					for (const Note& note : course->GetNotes(branch))
+						handleNotePlayback(course, branch, note, nLanes, iLane);
+				}
 			}
 		}
 
@@ -1266,7 +1341,9 @@ namespace PeepoDrumKit
 					const auto& in = item.Value.POD.Note;
 					bufferLength = sprintf_s(buffer, "Note { %d, %d, %d, %d, %g };\n", (in.BeatTime - baseBeat).Ticks, in.BeatDuration.Ticks, static_cast<i32>(in.Type), in.BalloonPopCount, in.TimeOffset.ToMS());
 				} break;
-				case GenericList::ScrollChanges:
+				case GenericList::ScrollChanges_Normal:
+				case GenericList::ScrollChanges_Expert:
+				case GenericList::ScrollChanges_Master:
 				{
 					const auto& in = item.Value.POD.Scroll;
 					bufferLength = sprintf_s(buffer, "ScrollSpeed { %d, %s };\n", (in.BeatTime - baseBeat).Ticks, in.ScrollSpeed.toString().c_str());
@@ -1400,7 +1477,7 @@ namespace PeepoDrumKit
 					}
 					else if (itemType == "ScrollSpeed")
 					{
-						auto& newItem = out.emplace_back(); newItem.List = GenericList::ScrollChanges;
+						auto& newItem = out.emplace_back(); newItem.List = GenericList::ScrollChanges_Normal;
 						auto& newItemValue = newItem.Value.POD.Scroll;
 						newItemValue = ScrollChange {};
 						newItemValue.BeatTime.Ticks = parsedParams[0].I32;
@@ -1456,14 +1533,14 @@ namespace PeepoDrumKit
 			});
 			return out;
 		};
-		static constexpr auto copyAllSelectedItems = [](const ChartCourse& course) -> std::vector<GenericListStructWithType>
+		static constexpr auto copyAllSelectedItems = [](const ChartCourse& course, BranchType branch) -> std::vector<GenericListStructWithType>
 		{
 			std::vector<GenericListStructWithType> out;
-			size_t selectionCount = 0; ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it) { selectionCount++; });
+			size_t selectionCount = 0; ForEachSelectedChartItem(course, branch, [&](const ForEachChartItemData& it) { selectionCount++; });
 			if (selectionCount > 0)
 			{
 				out.reserve(selectionCount);
-				ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+				ForEachSelectedChartItem(course, branch, [&](const ForEachChartItemData& it)
 				{
 					auto& itemValue = out.emplace_back();
 					itemValue.List = it.List;
@@ -1485,7 +1562,7 @@ namespace PeepoDrumKit
 		{
 		case ClipboardAction::Cut:
 		{
-			if (auto selectedItems = copyAllSelectedItems(course); !selectedItems.empty())
+			if (auto selectedItems = copyAllSelectedItems(course, context.ChartSelectedBranch); !selectedItems.empty())
 			{
 				size_t selectedNoteIndex = 0;
 				for (const auto& item : selectedItems)
@@ -1504,7 +1581,7 @@ namespace PeepoDrumKit
 		} break;
 		case ClipboardAction::Copy:
 		{
-			if (auto selectedItems = copyAllSelectedItems(course); !selectedItems.empty())
+			if (auto selectedItems = copyAllSelectedItems(course, context.ChartSelectedBranch); !selectedItems.empty())
 			{
 				// TODO: Maybe also animate original notes being copied (?)
 				Gui::SetClipboardText(itemsToClipboardText(selectedItems, findBaseBeat(selectedItems)).c_str());
@@ -1515,11 +1592,23 @@ namespace PeepoDrumKit
 			std::vector<GenericListStructWithType> clipboardItems = itemsFromClipboatdText(Gui::GetClipboardTextView());
 			if (!clipboardItems.empty())
 			{
+				for (auto& item : clipboardItems)
+					if (IsScrollChangesList(item.List))
+						item.List = BranchTypeToScrollChangesList(context.ChartSelectedBranch);
 				const Beat baseBeat = FloorBeatToCurrentGrid(context.GetCursorBeat()) - findBaseBeat(clipboardItems);
 				for (auto& item : clipboardItems) { SetBeat(GetBeat(item) + baseBeat, item); }
 
 				auto itemAlreadyExistsOrIsBad = [&](const GenericListStructWithType& item)
 				{
+					if (IsNotesList(item.List))
+					{
+						const BranchType branch = (item.List == GenericList::Notes_Expert) ? BranchType::Expert
+							: (item.List == GenericList::Notes_Master) ? BranchType::Master
+							: BranchType::Normal;
+						const Beat start = GetBeat(item);
+						if (!IsNoteRangeValidForBranch(course, branch, start, start + Max(Beat::Zero(), GetBeatDuration(item))))
+							return true;
+					}
 					const b8 requireStartAfterLastEnd = ListIsStartAfterLastEndRequired(item.List);
 					auto check = [&](auto& list, auto& i) { return (GetBeat(i) < Beat::Zero()) || (list.TryFindOverlappingBeatUntrusted(GetBeat(i), GetBeat(i) + GetBeatDuration(i), requireStartAfterLastEnd) != nullptr); };
 					switch (item.List)
@@ -1529,7 +1618,9 @@ namespace PeepoDrumKit
 					case GenericList::Notes_Normal: return check(course.Notes_Normal, item.Value.POD.Note);
 					case GenericList::Notes_Expert: return check(course.Notes_Expert, item.Value.POD.Note);
 					case GenericList::Notes_Master: return check(course.Notes_Master, item.Value.POD.Note);
-					case GenericList::ScrollChanges: return check(course.ScrollChanges, item.Value.POD.Scroll);
+					case GenericList::ScrollChanges_Normal: return check(course.ScrollChanges_Normal, item.Value.POD.Scroll);
+					case GenericList::ScrollChanges_Expert: return check(course.ScrollChanges_Expert, item.Value.POD.Scroll);
+					case GenericList::ScrollChanges_Master: return check(course.ScrollChanges_Master, item.Value.POD.Scroll);
 					case GenericList::BarLineChanges: return check(course.BarLineChanges, item.Value.POD.BarLine);
 					case GenericList::GoGoRanges: return check(course.GoGoRanges, item.Value.POD.GoGo);
 					case GenericList::Lyrics: return check(course.Lyrics, item.Value.NonTrivial.Lyric);
@@ -1555,7 +1646,7 @@ namespace PeepoDrumKit
 		} break;
 		case ClipboardAction::Delete:
 		{
-			if (auto selectedItems = copyAllSelectedItems(course); !selectedItems.empty())
+			if (auto selectedItems = copyAllSelectedItems(course, context.ChartSelectedBranch); !selectedItems.empty())
 			{
 				for (const auto& item : selectedItems)
 				{
@@ -1576,11 +1667,11 @@ namespace PeepoDrumKit
 		switch (action)
 		{
 		default: { assert(false); } break;
-		case SelectionAction::SelectAll: { ForEachChartItem(course, [&](const ForEachChartItemData& it) { SetIsSelected(true, it, course); }); } break;
+		case SelectionAction::SelectAll: { ForEachChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { SetIsSelected(true, it, course); }); } break;
 		case SelectionAction::UnselectAll: { ForEachChartItem(course, [&](const ForEachChartItemData& it) { SetIsSelected(false, it, course); }); } break;
-		case SelectionAction::InvertAll: { ForEachChartItem(course, [&](const ForEachChartItemData& it) { SetIsSelected(!GetIsSelected(it, course), it, course); }); } break;
+		case SelectionAction::InvertAll: { ForEachChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { SetIsSelected(!GetIsSelected(it, course), it, course); }); } break;
 		case SelectionAction::SelectToEnd:
-			ForEachChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				if (GetBeat(it, course) >= context.GetCursorBeat())
 					SetIsSelected(true, it, course);
@@ -1592,7 +1683,7 @@ namespace PeepoDrumKit
 			{
 				const Beat rangeSelectionMin = context.RangeSelection.GetMin();
 				const Beat rangeSelectionMax = context.RangeSelection.GetMax();
-				ForEachChartItem(course, [&](const ForEachChartItemData& it)
+				ForEachChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 				{
 					const Beat itStart = GetBeat(it, course);
 					const Beat itEnd = itStart + GetBeatDuration(it, course);
@@ -1614,6 +1705,8 @@ namespace PeepoDrumKit
 
 			for (GenericList list = {}; list < GenericList::Count; IncrementEnum(list))
 			{
+				if (IsScrollChangesList(list) && list != BranchTypeToScrollChangesList(context.ChartSelectedBranch))
+					continue;
 				const i32 listCount = static_cast<i32>(GetGenericListCount(course, list));
 				if (param.ShiftDelta > 0)
 				{
@@ -1647,6 +1740,8 @@ namespace PeepoDrumKit
 			const std::string_view pattern = param.Pattern;
 			for (GenericList list = {}; list < GenericList::Count; IncrementEnum(list))
 			{
+				if (IsScrollChangesList(list) && list != BranchTypeToScrollChangesList(context.ChartSelectedBranch))
+					continue;
 				for (size_t i = 0, patternIndex = 0; i < GetGenericListCount(course, list); i++)
 				{
 					if (const ForEachChartItemData it = { list, i }; GetIsSelected(it, course))
@@ -2000,7 +2095,7 @@ namespace PeepoDrumKit
 			assert(param.TimeRatio[1] != 0);
 			if (param.TimeRatio[0] == param.TimeRatio[1] && !*Settings.General.TransformScale_QuantizeToGrid)
 				break;
-			size_t selectedItemCount = 0; ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it) { selectedItemCount++; });
+			size_t selectedItemCount = 0; ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { selectedItemCount++; });
 			if (selectedItemCount <= 0)
 				return;
 
@@ -2011,7 +2106,7 @@ namespace PeepoDrumKit
 			std::vector<GenericListStructWithType> itemsToRemove; itemsToRemove.reserve(selectedItemCount);
 			std::vector<GenericListStructWithType> itemsToAdd; itemsToAdd.reserve(selectedItemCount);
 			std::vector<size_t> idxItemsToAlignToStart; // move last selected item to start for reversing end-unbounded items
-			ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				const Beat origBeat = GetBeat(it, course);
 				const Beat roundedOrigBeat = r.quantizeItem ? RoundBeatToCurrentGrid(origBeat) : origBeat; // only for determining the before range
@@ -2128,7 +2223,7 @@ namespace PeepoDrumKit
 
 			std::vector<GenericListStructWithType> itemsToRemove;
 			std::vector<GenericListStructWithType> itemsToAdd;
-			ForEachChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				const Beat origBeat = GetBeat(it, course);
 				auto& itemToRemove = itemsToRemove.emplace_back();
@@ -2410,7 +2505,7 @@ namespace PeepoDrumKit
 				ChartCourse& selectedCourse = *context.ChartSelectedCourse;
 
 				size_t selectedItemCount = 0; b8 allSelectedItemsAreNotes = true; b8 atLeastOneSelectedItemIsTempoChange = false;
-				ForEachSelectedChartItem(selectedCourse, [&](const ForEachChartItemData& it)
+				ForEachSelectedChartItem(selectedCourse, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 				{
 					selectedItemCount++;
 					allSelectedItemsAreNotes &= IsNotesList(it.List);
@@ -2426,9 +2521,11 @@ namespace PeepoDrumKit
 
 				if (selectedItemCount > 0 && Regions.Content.IsHovered && SelectedItemDrag.ActiveTarget == EDragTarget::None)
 				{
-					ForEachTimelineRow(*this, [&](const ForEachRowData& rowIt)
+					ForEachTimelineRow(*this, selectedCourse, [&](const ForEachRowData& rowIt)
 					{
-						const GenericList list = TimelineRowToGenericList(rowIt.RowType);
+						if (rowIt.RowType == TimelineRowType::BranchCommands)
+							return;
+						const GenericList list = TimelineRowToGenericList(rowIt.RowType, context.ChartSelectedBranch);
 						const b8 isNotesRow = IsNotesList(list);
 
 						const Rect screenRowRect = Rect(LocalToScreenSpace(vec2(0.0f, rowIt.LocalY)), LocalToScreenSpace(vec2(Regions.Content.GetWidth(), rowIt.LocalY + rowIt.LocalHeight)));
@@ -2518,6 +2615,21 @@ namespace PeepoDrumKit
 						const i32 listCount = static_cast<i32>(GetGenericListCount(selectedCourse, list));
 						if (listCount <= 0)
 							return true;
+						if (IsNotesList(list))
+						{
+							const BranchType branch = (list == GenericList::Notes_Expert) ? BranchType::Expert
+								: (list == GenericList::Notes_Master) ? BranchType::Master
+								: BranchType::Normal;
+							for (i32 i = 0; i < listCount; i++)
+							{
+								if (!itemSelected(list, i))
+									continue;
+								const Beat start = itemStart(list, i) + (tailOnly ? Beat::Zero() : beatIncrement);
+								const Beat end = itemStart(list, i) + Max(Beat::Zero(), itemDuration(list, i)) + beatIncrement;
+								if (!IsNoteRangeValidForBranch(selectedCourse, branch, start, end))
+									return false;
+							}
+						}
 
 						// BUG: It's possible to move two non-empty lyric changes on top of each other, which isn't a critical bug (as it's still handled correctly) 
 						//		but definitely annoying and a bit confusing
@@ -2605,7 +2717,11 @@ namespace PeepoDrumKit
 						const b8 isTail = (SelectedItemDrag.ActiveTarget == EDragTarget::Tail);
 						b8 allItemsCanBeMoved = true;
 						for (GenericList list = {}; list < GenericList::Count; IncrementEnum(list))
+						{
+							if (IsScrollChangesList(list) && list != BranchTypeToScrollChangesList(context.ChartSelectedBranch))
+								continue;
 							allItemsCanBeMoved &= checkCanSelectedItemsBeDragged(list, dragBeatIncrement, isTail);
+						}
 
 						if (allItemsCanBeMoved)
 						{
@@ -2632,7 +2748,7 @@ namespace PeepoDrumKit
 								std::vector<Commands::ChangeMultipleGenericProperties::Data> itemsToChange;
 								itemsToChange.reserve(selectedItemCount);
 
-								ForEachSelectedChartItem(selectedCourse, [&](const ForEachChartItemData& it)
+								ForEachSelectedChartItem(selectedCourse, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 								{
 									auto& data = itemsToChange.emplace_back();
 									data.Index = it.Index;
@@ -2804,7 +2920,16 @@ namespace PeepoDrumKit
 							ExecuteSelectionAction(context, SelectionAction::PerRowSelectPattern, param.SetPattern(Settings.General.CustomSelectionPatterns->V[i].Data));
 					}
 
-					if (Gui::IsAnyPressed(*Settings.Input.Timeline_ConvertSelectionToScrollChanges, false)) ExecuteConvertSelectionToEvents<GenericList::ScrollChanges>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_ConvertSelectionToScrollChanges, false))
+					{
+						switch (context.ChartSelectedBranch)
+						{
+						case BranchType::Normal: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Normal>(context); break;
+						case BranchType::Expert: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Expert>(context); break;
+						case BranchType::Master: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Master>(context); break;
+						default: assert(false); break;
+						}
+					}
 				}
 
 				if (const auto& io = Gui::GetIO(); !io.KeyCtrl)
@@ -2989,7 +3114,8 @@ namespace PeepoDrumKit
 						for (i32 i = 0; i < maxExpectedNoteCountToAdd; i++)
 						{
 							const Beat beatForThisNote = Beat(Min(startTick, endTick).Ticks + (i * beatPerNote.Ticks));
-							if (notes.TryFindOverlappingBeat(beatForThisNote, beatForThisNote) == nullptr)
+							if (IsNoteRangeValidForBranch(course, context.ChartSelectedBranch, beatForThisNote, beatForThisNote)
+								&& notes.TryFindOverlappingBeat(beatForThisNote, beatForThisNote) == nullptr)
 							{
 								Note& newNote = newNotesToAdd.emplace_back();
 								newNote.BeatTime = beatForThisNote;
@@ -3008,6 +3134,8 @@ namespace PeepoDrumKit
 					{
 						const b8 isPlayback = context.GetIsPlayback();
 						const Beat cursorBeat = isPlayback ? RoundBeatToCurrentGrid(context.GetCursorBeat()) : FloorBeatToCurrentGrid(context.GetCursorBeat());
+						if (!IsNoteRangeValidForBranch(course, context.ChartSelectedBranch, cursorBeat, cursorBeat))
+							return true;
 
 						Note* existingNoteAtCursor = notes.TryFindOverlappingBeat(cursorBeat, cursorBeat);
 						if (existingNoteAtCursor != nullptr)
@@ -3060,14 +3188,19 @@ namespace PeepoDrumKit
 				if (PlaceBalloonBindingDownThisFrame || PlaceDrumrollBindingDownThisFrame)
 				{
 					const Beat cursorBeat = context.GetIsPlayback() ? RoundBeatToCurrentGrid(context.GetCursorBeat()) : FloorBeatToCurrentGrid(context.GetCursorBeat());
-					LongNotePlacement.NoteType = ToBigNoteIf(PlaceBalloonBindingDownThisFrame ? NoteType::Balloon : NoteType::Drumroll, Gui::GetIO().KeyAlt);
-					if (!LongNotePlacement.IsActive)
+					if (IsNoteRangeValidForBranch(*context.ChartSelectedCourse, context.ChartSelectedBranch, cursorBeat, cursorBeat))
 					{
-						LongNotePlacement.IsActive = true;
-						LongNotePlacement.CursorBeatHead = cursorBeat;
-						PlaySoundEffectTypeForNoteType(context, LongNotePlacement.NoteType);
+						LongNotePlacement.NoteType = ToBigNoteIf(PlaceBalloonBindingDownThisFrame ? NoteType::Balloon : NoteType::Drumroll, Gui::GetIO().KeyAlt);
+						if (!LongNotePlacement.IsActive)
+						{
+							LongNotePlacement.IsActive = true;
+							LongNotePlacement.CursorBeatHead = cursorBeat;
+							PlaySoundEffectTypeForNoteType(context, LongNotePlacement.NoteType);
+						}
+						LongNotePlacement.CursorBeatTail = cursorBeat;
 					}
-					LongNotePlacement.CursorBeatTail = cursorBeat;
+					else
+						LongNotePlacement = {};
 				}
 			}
 			else
@@ -3081,6 +3214,8 @@ namespace PeepoDrumKit
 				SortedNotesList& notes = course.GetNotes(context.ChartSelectedBranch);
 				const Beat minBeatAfter = LongNotePlacement.GetMin();
 				const Beat maxBeat = LongNotePlacement.GetMax();
+				if (!IsNoteRangeValidForBranch(course, context.ChartSelectedBranch, minBeatAfter, maxBeat))
+					return;
 
 				std::vector<Note> notesToRemove;
 				for (const Note& existingNote : notes)
@@ -3188,9 +3323,11 @@ namespace PeepoDrumKit
 						const Beat selectionBeatMin = context.TimeToBeat(selectionTimeMin);
 						const Beat selectionBeatMax = context.TimeToBeat(selectionTimeMax);
 
-						ForEachTimelineRow(*this, [&](const ForEachRowData& rowIt)
+						ForEachTimelineRow(*this, *context.ChartSelectedCourse, [&](const ForEachRowData& rowIt)
 						{
-							const GenericList list = TimelineRowToGenericList(rowIt.RowType);
+							if (rowIt.RowType == TimelineRowType::BranchCommands)
+								return;
+							const GenericList list = TimelineRowToGenericList(rowIt.RowType, context.ChartSelectedBranch);
 							const b8 isNotesRow = IsNotesList(list);
 
 							enum class XIntersectionTest : u8 { Tips, Full };
@@ -3214,6 +3351,12 @@ namespace PeepoDrumKit
 								const b8 hasTimeDuration = TryGet<GenericMember::F32_JPOSScrollDuration>(*context.ChartSelectedCourse, list, i, timeDuration);
 								const b8 hasIsSelected = TryGet<GenericMember::B8_IsSelected>(*context.ChartSelectedCourse, list, i, isSelected);
 								assert(hasBeatStart && hasIsSelected);
+								if (isNotesRow)
+								{
+									const b8 isUnbranchedNotesRow = (rowIt.RowType == TimelineRowType::Notes);
+									if (IsBeatInsideBranchRange(*context.ChartSelectedCourse, beatStart) == isUnbranchedNotesRow)
+										continue;
+								}
 
 								// Note: Ignore negative-length body
 								const Beat beatMin = beatStart;
@@ -3275,7 +3418,7 @@ namespace PeepoDrumKit
 		}
 
 		// restrict vertical scroll range
-		Camera.PositionTarget.y = std::max(0.0f, std::min(Camera.PositionTarget.y, GetTotalTimelineRowsHeight(*this) - Regions.Content.GetHeight()));
+		Camera.PositionTarget.y = std::max(0.0f, std::min(Camera.PositionTarget.y, GetTotalTimelineRowsHeight(*this, *context.ChartSelectedCourse) - Regions.Content.GetHeight()));
 	}
 
 	void ChartTimeline::UpdateAllAnimationsAfterUserInput(ChartContext& context)
@@ -3458,7 +3601,7 @@ namespace PeepoDrumKit
 		drawers.DrawTimelineContentScrollbarY([&](ImDrawList* drawList)
 		{
 			const f32 localSpaceVisibleHeight = Regions.Content.GetHeight();
-			const f32 localSpaceRowHeight = GetTotalTimelineRowsHeight(*this);
+			const f32 localSpaceRowHeight = GetTotalTimelineRowsHeight(*this, *context.ChartSelectedCourse);
 
 			if (localSpaceRowHeight <= localSpaceVisibleHeight) { // can hide scrollbar
 				drawers.HideTimelineContentScrollbarY();
@@ -3552,7 +3695,7 @@ namespace PeepoDrumKit
 				DrawListSidebar->ChannelsSplit(2); // 0: background, 1: interactable objects and forground
 				DrawListSidebar->ChannelsSetCurrent(1);
 				// NOTE: Row label text
-				ForEachTimelineRow(*this, [&](const ForEachRowData& rowIt)
+				ForEachTimelineRow(*this, *context.ChartSelectedCourse, [&](const ForEachRowData& rowIt)
 				{
 					const Rect sidebarScreenSpace = {
 						LocalToScreenSpace_Sidebar(vec2(0.0f, rowIt.LocalY)),
@@ -3560,15 +3703,26 @@ namespace PeepoDrumKit
 					};
 
 					DrawListSidebar->AddLine(sidebarScreenSpace.GetBL(), sidebarScreenSpace.BR, Gui::GetColorU32(ImGuiCol_Separator, 0.35f));
+					const BranchType rowBranch = TimelineRowToBranchType(rowIt.RowType);
+					if (rowBranch != BranchType::Count)
+					{
+						Gui::PushID(static_cast<i32>(EnumToIndex(rowIt.RowType)));
+						Gui::SetCursorScreenPos(sidebarScreenSpace.TL);
+						const b8 clicked = Gui::InvisibleButton("##SelectBranch", sidebarScreenSpace.GetSize());
+						const b8 hovered = Gui::IsItemHovered();
+						Gui::PopID();
+						if (rowBranch == context.ChartSelectedBranch)
+							DrawListSidebar->AddRectFilled(sidebarScreenSpace.TL, sidebarScreenSpace.BR, Gui::GetColorU32(ImGuiCol_HeaderActive, 0.65f));
+						else if (hovered)
+							DrawListSidebar->AddRectFilled(sidebarScreenSpace.TL, sidebarScreenSpace.BR, Gui::GetColorU32(ImGuiCol_HeaderHovered, 0.45f));
+						if (clicked)
+							context.SetSelectedChart(context.ChartSelectedCourse, rowBranch);
+					}
 
 					const f32 textHeight = Gui::GetFontSize();
 					const vec2 screenSpaceTextPosition = sidebarScreenSpace.TL + vec2((Gui::GetStyle().FramePadding.x * 2.0f), Floor((rowIt.LocalHeight * 0.5f) - (textHeight * 0.5f)));
 
-					// HACK: Use TextDisable for now to make it clear that these aren't really implemented yet
-					const b8 isThisRowImplemented = !(rowIt.RowType == TimelineRowType::Notes_Expert || rowIt.RowType == TimelineRowType::Notes_Master);
-
 					Gui::DisableFontPixelSnap(true);
-					Gui::BeginDisabled(!isThisRowImplemented);
 
 					Gui::SetCursorScreenPos(screenSpaceTextPosition);
 
@@ -3601,7 +3755,6 @@ namespace PeepoDrumKit
 						break;
 					}
 
-					Gui::EndDisabled();
 					Gui::DisableFontPixelSnap(false);
 				});
 			});
@@ -3614,7 +3767,7 @@ namespace PeepoDrumKit
 				DrawListContent->ChannelsSplit(2); // 0: background, 1: interactable objects and forground
 				DrawListContent->ChannelsSetCurrent(1);
 				// NOTE: Row separator line
-				ForEachTimelineRow(*this, [&](const ForEachRowData& rowIt)
+				ForEachTimelineRow(*this, *context.ChartSelectedCourse, [&](const ForEachRowData& rowIt)
 				{
 					const vec2 screenSpaceBL = LocalToScreenSpace(vec2(0.0f, rowIt.LocalY + rowIt.LocalHeight));
 					DrawListContent->AddLine(screenSpaceBL, screenSpaceBL + vec2(Regions.Content.GetWidth(), 0.0f), TimelineHorizontalRowLineColor);
@@ -3624,10 +3777,12 @@ namespace PeepoDrumKit
 					{
 					case TimelineRowType::Tempo: DrawTimelineContentItemRowT<TempoChange, TimelineRowType::Tempo>(rowParam, rowIt, context.ChartSelectedCourse->TempoMap.Tempo); break;
 					case TimelineRowType::TimeSignature: DrawTimelineContentItemRowT<TimeSignatureChange, TimelineRowType::TimeSignature>(rowParam, rowIt, context.ChartSelectedCourse->TempoMap.Signature); break;
+					case TimelineRowType::Notes: DrawTimelineContentItemRowT<Note, TimelineRowType::Notes>(rowParam, rowIt, context.ChartSelectedCourse->Notes_Normal); break;
+					case TimelineRowType::BranchCommands: DrawTimelineBranchCommands(rowParam, rowIt); break;
 					case TimelineRowType::Notes_Normal: DrawTimelineContentItemRowT<Note, TimelineRowType::Notes_Normal>(rowParam, rowIt, context.ChartSelectedCourse->Notes_Normal); break;
 					case TimelineRowType::Notes_Expert: DrawTimelineContentItemRowT<Note, TimelineRowType::Notes_Expert>(rowParam, rowIt, context.ChartSelectedCourse->Notes_Expert); break;
 					case TimelineRowType::Notes_Master: DrawTimelineContentItemRowT<Note, TimelineRowType::Notes_Master>(rowParam, rowIt, context.ChartSelectedCourse->Notes_Master); break;
-					case TimelineRowType::ScrollSpeed: DrawTimelineContentItemRowT<ScrollChange, TimelineRowType::ScrollSpeed>(rowParam, rowIt, context.ChartSelectedCourse->ScrollChanges); break;
+					case TimelineRowType::ScrollSpeed: DrawTimelineContentItemRowT<ScrollChange, TimelineRowType::ScrollSpeed>(rowParam, rowIt, context.ChartSelectedCourse->GetScrollChanges(context.ChartSelectedBranch)); break;
 					case TimelineRowType::BarLineVisibility: DrawTimelineContentItemRowT<BarLineChange, TimelineRowType::BarLineVisibility>(rowParam, rowIt, context.ChartSelectedCourse->BarLineChanges); break;
 					case TimelineRowType::GoGoTime: DrawTimelineContentItemRowT<GoGoRange, TimelineRowType::GoGoTime>(rowParam, rowIt, context.ChartSelectedCourse->GoGoRanges); break;
 					case TimelineRowType::Lyrics: DrawTimelineContentItemRowT<LyricChange, TimelineRowType::Lyrics>(rowParam, rowIt, context.ChartSelectedCourse->Lyrics); break;
@@ -3859,13 +4014,13 @@ namespace PeepoDrumKit
 		// NOTE: Background waveform
 		if (TimelineWaveformDrawOrder == WaveformDrawOrder::Background && !context.SongWaveformL.IsEmpty()) {
 			DrawListContent->ChannelsSetCurrent(0);
-			DrawTimelineContentWaveform(*this, DrawListContent, context.Chart.SongOffset, context.SongWaveformL, context.SongWaveformR, context.SongWaveformFadeAnimationCurrent);
+			DrawTimelineContentWaveform(*this, *context.ChartSelectedCourse, DrawListContent, context.Chart.SongOffset, context.SongWaveformL, context.SongWaveformR, context.SongWaveformFadeAnimationCurrent);
 		}
 
 		// NOTE: Background waveform overlay
 		if (TimelineWaveformDrawOrder == WaveformDrawOrder::Foreground && !context.SongWaveformL.IsEmpty()) {
 			DrawListContent->ChannelsSetCurrent(1);
-			DrawTimelineContentWaveform(*this, DrawListContent, context.Chart.SongOffset, context.SongWaveformL, context.SongWaveformR, context.SongWaveformFadeAnimationCurrent);
+			DrawTimelineContentWaveform(*this, *context.ChartSelectedCourse, DrawListContent, context.Chart.SongOffset, context.SongWaveformL, context.SongWaveformR, context.SongWaveformFadeAnimationCurrent);
 		}
 
 		// NOTE: Cursor foreground
@@ -3904,7 +4059,7 @@ namespace PeepoDrumKit
 		{
 			DrawListContent->ChannelsSetCurrent(1);
 
-			f32 localYMax = std::max(Regions.Content.GetHeight(), GetTotalTimelineRowsHeight(*this));
+			f32 localYMax = std::max(Regions.Content.GetHeight(), GetTotalTimelineRowsHeight(*this, *context.ChartSelectedCourse));
 			auto clampVisibleLocalSpace = [&](vec2 localSpace) // keep top and bottom outlines within the world space
 			{
 				return vec2(localSpace.x, std::max(1.0f, std::min(localSpace.y + Camera.PositionCurrent.y, (localYMax - 1.0f))) - Camera.PositionCurrent.y);

@@ -104,8 +104,21 @@ namespace PeepoDrumKit
 	int EntryPoint()
 	{
 		Log::Write("EntryPoint begin");
-		// TODO: Parse arguments and write into global argv settings struct
-		// auto[argc, argv] = CommandLine::GetCommandLineUTF8();
+		auto [argc, argv] = CommandLine::GetCommandLineUTF8();
+		for (size_t i = 1; i < argc; i++)
+		{
+			if (argv[i] == "--test-tja-branches")
+			{
+				std::string error;
+				if (RunTJAChartBranchSelfTest(error))
+				{
+					Log::Write("TJA branch self-test passed");
+					return 0;
+				}
+				Log::Write("TJA branch self-test failed: %s", error.c_str());
+				return 1;
+			}
+		}
 
 		while (true)
 		{

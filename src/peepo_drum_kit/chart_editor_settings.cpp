@@ -257,7 +257,7 @@ namespace PeepoDrumKit
 	}
 
 	constexpr size_t SizeOfPersistentAppData = sizeof(PersistentAppData);
-	static_assert(PEEPO_RELEASE || SizeOfPersistentAppData == 136, "TODO: Add missing ini file handling for newly added PersistentAppData fields");
+	static_assert(PEEPO_RELEASE || SizeOfPersistentAppData == 144, "TODO: Add missing ini file handling for newly added PersistentAppData fields");
 
 	SettingsParseResult ParseSettingsIni(std::string_view fileContent, PersistentAppData& out)
 	{
@@ -290,6 +290,7 @@ namespace PeepoDrumKit
 				else if (it.Key == "show_window_help") { if (!BoolFromString(in, out.LastSession.ShowWindow_Help)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_update_notes") { if (!BoolFromString(in, out.LastSession.ShowWindow_UpdateNotes)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_chart_stats") { if (!BoolFromString(in, out.LastSession.ShowWindow_ChartStats)) return parser.Error_InvalidBool(); }
+				else if (it.Key == "show_window_chart_branches") { if (!BoolFromString(in, out.LastSession.ShowWindow_ChartBranches)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_settings") { if (!BoolFromString(in, out.LastSession.ShowWindow_Settings)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_audio_test") { if (!BoolFromString(in, out.LastSession.ShowWindow_AudioTest)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_tja_import_test") { if (!BoolFromString(in, out.LastSession.ShowWindow_TJAImportTest)) return parser.Error_InvalidBool(); }
@@ -331,6 +332,7 @@ namespace PeepoDrumKit
 		writer.LineKeyValue_Str("show_window_help", BoolToString(in.LastSession.ShowWindow_Help));
 		writer.LineKeyValue_Str("show_window_update_notes", BoolToString(in.LastSession.ShowWindow_UpdateNotes));
 		writer.LineKeyValue_Str("show_window_chart_stats", BoolToString(in.LastSession.ShowWindow_ChartStats));
+		writer.LineKeyValue_Str("show_window_chart_branches", BoolToString(in.LastSession.ShowWindow_ChartBranches));
 		writer.LineKeyValue_Str("show_window_settings", BoolToString(in.LastSession.ShowWindow_Settings));
 		writer.LineKeyValue_Str("show_window_audio_test", BoolToString(in.LastSession.ShowWindow_AudioTest));
 		writer.LineKeyValue_Str("show_window_tja_import_test", BoolToString(in.LastSession.ShowWindow_TJAImportTest));
@@ -511,6 +513,9 @@ namespace PeepoDrumKit
 			X(Input.Timeline_PlaceNoteKa, "timeline_place_note_ka");
 			X(Input.Timeline_PlaceNoteBalloon, "timeline_place_note_balloon");
 			X(Input.Timeline_PlaceNoteDrumroll, "timeline_place_note_drumroll");
+			X(Input.Timeline_SelectBranchNormal, "timeline_select_branch_normal");
+			X(Input.Timeline_SelectBranchExpert, "timeline_select_branch_expert");
+			X(Input.Timeline_SelectBranchMaster, "timeline_select_branch_master");
 			X(Input.Timeline_Cut, "timeline_cut");
 			X(Input.Timeline_Copy, "timeline_copy");
 			X(Input.Timeline_Paste, "timeline_paste");

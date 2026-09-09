@@ -1583,7 +1583,7 @@ namespace PeepoDrumKit
 
 			// fetch values from events
 			BeatSortedForwardIterator<TempoChange> scrollTempoChangeIt {};
-			ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				TempChartItem& out = SelectedItems.emplace_back();
 				out.List = it.List;
@@ -1599,7 +1599,7 @@ namespace PeepoDrumKit
 					}
 				}
 
-				if (it.List == GenericList::ScrollChanges)
+				if (IsScrollChangesList(it.List))
 					out.BaseScrollTempo = TempoOrDefault(scrollTempoChangeIt.Next(course.TempoMap.Tempo.Sorted, out.MemberValues.BeatStart()));
 			});
 
@@ -1741,7 +1741,7 @@ namespace PeepoDrumKit
 			{
 				if (Gui::Property::BeginTable(ImGuiTableFlags_BordersInner))
 				{
-					const cstr listTypeNames[] = { UI_Str("SELECTED_EVENTS_TEMPOS"), UI_Str("SELECTED_EVENTS_TIME_SIGNATURES"), UI_Str("EVENT_NOTES"), UI_Str("EVENT_NOTES"), UI_Str("EVENT_NOTES"), UI_Str("SELECTED_EVENTS_SCROLL_SPEEDS"), UI_Str("SELECTED_EVENTS_BAR_LINE_VISIBILITIES"), UI_Str("SELECTED_EVENTS_GO_GO_RANGES"), UI_Str("EVENT_LYRICS"), UI_Str("SELECTED_EVENTS_SCROLL_TYPES"), UI_Str("SELECTED_EVENTS_JPOS_SCROLLS"), UI_Str("SELECTED_EVENTS_SUDDEN"), };
+					const cstr listTypeNames[] = { UI_Str("SELECTED_EVENTS_TEMPOS"), UI_Str("SELECTED_EVENTS_TIME_SIGNATURES"), UI_Str("EVENT_NOTES"), UI_Str("EVENT_NOTES"), UI_Str("EVENT_NOTES"), UI_Str("SELECTED_EVENTS_SCROLL_SPEEDS"), UI_Str("SELECTED_EVENTS_SCROLL_SPEEDS"), UI_Str("SELECTED_EVENTS_SCROLL_SPEEDS"), UI_Str("SELECTED_EVENTS_BAR_LINE_VISIBILITIES"), UI_Str("SELECTED_EVENTS_GO_GO_RANGES"), UI_Str("EVENT_LYRICS"), UI_Str("SELECTED_EVENTS_SCROLL_TYPES"), UI_Str("SELECTED_EVENTS_JPOS_SCROLLS"), UI_Str("SELECTED_EVENTS_SUDDEN"), };
 					static_assert(ArrayCount(listTypeNames) == EnumCount<GenericList>);
 
 					Gui::Property::Property([&]
@@ -2637,6 +2637,154 @@ namespace PeepoDrumKit
 		}
 	}
 
+	void ChartBranchWindow::DrawGui(ChartContext& context, ChartTimeline& timeline)
+	{
+		Gui::UpdateSmoothScrollWindow();
+
+		assert(context.ChartSelectedCourse != nullptr);
+		ChartCourse& course = *context.ChartSelectedCourse;
+		const cstr branchConditionNames[] = { UI_Str("BRANCH_CONDITION_ROLL"), UI_Str("BRANCH_CONDITION_ACCURACY"), UI_Str("BRANCH_CONDITION_SCORE") };
+		auto snapRangeToBars = [&](Beat start, Beat end)
+		{
+			Beat snappedStart = Beat::Zero();
+			Beat snappedEnd = Beat::Zero();
+			course.TempoMap.ForEachBeatBar([&](const SortedTempoMap::ForEachBeatBarData& it)
+			{
+				if (!it.IsBar)
+					return ControlFlow::Fallthrough;
+				if (it.Beat <= start)
+					snappedStart = it.Beat;
+				if (snappedEnd <= snappedStart && it.Beat >= end)
+				{
+					snappedEnd = it.Beat;
+					return ControlFlow::Break;
+				}
+				return ControlFlow::Fallthrough;
+			});
+			if (snappedEnd <= snappedStart)
+				snappedEnd = snappedStart + Beat::FromBars(1);
+			return std::pair { snappedStart, snappedEnd };
+		};
+		auto rangeOverlapsExistingBranch = [&](Beat start, Beat end, size_t exceptIndex = SIZE_MAX)
+		{
+			for (size_t i = 0; i < course.Branches.size(); i++)
+				if (i != exceptIndex && start < course.Branches[i].GetEnd() && course.Branches[i].GetStart() < end)
+					return true;
+			return false;
+		};
+
+		const Beat cursorBeat = context.GetCursorBeat();
+		if (Gui::Property::BeginTable(ImGuiTableFlags_BordersInner))
+		{
+			auto commandButton = [&](cstr commandName, b8 existsAtCursor, auto add, auto remove)
+			{
+				Gui::PushID(commandName);
+				Gui::Property::PropertyTextValueFunc(commandName, [&]
+				{
+					if (Gui::Button(UI_StrRuntime(existsAtCursor ? "ACT_EVENT_REMOVE" : "ACT_EVENT_ADD"), vec2(-1.0f, 0.0f)))
+					{
+						if (existsAtCursor) remove(); else add();
+						context.Undo.NotifyChangesWereMade();
+					}
+				});
+				Gui::PopID();
+			};
+
+			auto sectionAtCursor = std::find(course.BranchSections.begin(), course.BranchSections.end(), cursorBeat);
+			commandButton("#SECTION", sectionAtCursor != course.BranchSections.end(), [&]
+			{
+				course.BranchSections.push_back(cursorBeat);
+				std::sort(course.BranchSections.begin(), course.BranchSections.end());
+			}, [&] { course.BranchSections.erase(sectionAtCursor); });
+
+			auto branchStartAtCursor = std::find_if(course.Branches.begin(), course.Branches.end(), [&](const BranchRange& branch) { return branch.GetStart() == cursorBeat; });
+			commandButton("#BRANCHSTART", branchStartAtCursor != course.Branches.end(), [&]
+			{
+				if (course.Branches.empty())
+				{
+					course.ScrollChanges_Expert = course.ScrollChanges_Normal;
+					course.ScrollChanges_Master = course.ScrollChanges_Normal;
+				}
+				course.Branches.push_back(BranchRange { cursorBeat, Beat::Zero(), TJA::BranchCondition::Precise, 70, 80 });
+				std::sort(course.Branches.begin(), course.Branches.end(), [](const BranchRange& a, const BranchRange& b) { return a.BeatTime < b.BeatTime; });
+			}, [&] { course.Branches.erase(branchStartAtCursor); });
+
+			auto branchEndAtCursor = std::find_if(course.Branches.begin(), course.Branches.end(), [&](const BranchRange& branch) { return branch.BeatDuration > Beat::Zero() && branch.GetEnd() == cursorBeat; });
+			auto openBranch = std::find_if(course.Branches.rbegin(), course.Branches.rend(), [&](const BranchRange& branch) { return branch.GetStart() <= cursorBeat && branch.BeatDuration == Beat::Zero(); });
+			commandButton("#BRANCHEND", branchEndAtCursor != course.Branches.end(), [&]
+			{
+				if (openBranch != course.Branches.rend())
+					openBranch->BeatDuration = cursorBeat - openBranch->BeatTime;
+			}, [&]
+			{
+				branchEndAtCursor->BeatDuration = Beat::Zero();
+			});
+
+			Gui::Property::EndTable();
+		}
+
+		size_t branchToRemove = SIZE_MAX;
+		for (size_t i = 0; i < course.Branches.size(); i++)
+		{
+			BranchRange& branch = course.Branches[i];
+			Gui::PushID(static_cast<i32>(i));
+			Gui::Separator();
+			char startLabel[64], endLabel[64];
+			sprintf_s(startLabel, UI_Str("INFO_BRANCH_START_BEAT"), branch.GetStart().BeatsFraction());
+			sprintf_s(endLabel, UI_Str("INFO_BRANCH_END_BEAT"), branch.GetEnd().BeatsFraction());
+			if (Gui::Button(startLabel)) timeline.ScrollToBeat(context, branch.GetStart());
+			Gui::SameLine();
+			if (Gui::Button(endLabel)) timeline.ScrollToBeat(context, branch.GetEnd());
+			Gui::SetNextItemWidth(-1.0f);
+			if (Gui::ComboEnum("##BranchCondition", &branch.Condition, branchConditionNames))
+				context.Undo.NotifyChangesWereMade();
+			i32 requirements[] = { branch.RequirementExpert, branch.RequirementMaster };
+			Gui::SetNextItemWidth(-1.0f);
+			if (Gui::InputInt2("##BranchRequirements", requirements))
+			{
+				branch.RequirementExpert = requirements[0];
+				branch.RequirementMaster = requirements[1];
+				context.Undo.NotifyChangesWereMade();
+			}
+			if (context.RangeSelection.IsActiveAndHasEnd())
+			{
+				Gui::SameLine();
+				if (Gui::Button(UI_Str("ACT_BRANCH_USE_SELECTION")))
+				{
+					auto [start, end] = snapRangeToBars(context.RangeSelection.GetMin(), context.RangeSelection.GetMax());
+					if (!rangeOverlapsExistingBranch(start, end, i))
+					{
+						branch.BeatTime = start;
+						branch.BeatDuration = end - start;
+						context.Undo.NotifyChangesWereMade();
+					}
+				}
+			}
+			Gui::SameLine();
+			if (Gui::Button("Remove"))
+				branchToRemove = i;
+			Gui::PopID();
+		}
+		if (branchToRemove != SIZE_MAX)
+		{
+			course.Branches.erase(course.Branches.begin() + branchToRemove);
+			context.Undo.NotifyChangesWereMade();
+		}
+
+		if (Gui::Button(UI_Str("ACT_BRANCH_TOGGLE_LEVELHOLD_AT_CURSOR"), vec2(-1.0f, 0.0f)))
+		{
+			const Beat beat = snapRangeToBars(context.GetCursorBeat(), context.GetCursorBeat()).first;
+			if (auto it = std::find(course.BranchLevelHolds.begin(), course.BranchLevelHolds.end(), beat); it == course.BranchLevelHolds.end())
+			{
+				course.BranchLevelHolds.push_back(beat);
+				std::sort(course.BranchLevelHolds.begin(), course.BranchLevelHolds.end());
+			}
+			else
+				course.BranchLevelHolds.erase(it);
+			context.Undo.NotifyChangesWereMade();
+		}
+	}
+
 	template <typename TValue, typename... TLables>
 	static b8 GuiEnumLikeButtons(cstr labelGroup, TValue* currentValue, TLables... labelNames)
 	{
@@ -2746,7 +2894,7 @@ namespace PeepoDrumKit
 		{
 			b8 isAnyItemOtherThanNotesSelected = false;
 			b8 isAnyItemNotInListSelected[EnumCount<GenericList>] = {}; // all false
-			ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				if (!IsNotesList(it.List)) isAnyItemOtherThanNotesSelected = true;
 				for (GenericList list = {}; list != GenericList::Count; IncrementEnum(list)) {
@@ -2869,14 +3017,16 @@ namespace PeepoDrumKit
 					Gui::PopID();
 				});
 
-				const ScrollChange* scrollChangeChangeAtCursor = course.ScrollChanges.TryFindLastAtBeat(cursorBeat);
+				SortedScrollChangesList& scrollChanges = course.GetScrollChanges(context.ChartSelectedBranch);
+				const GenericList scrollChangesList = BranchTypeToScrollChangesList(context.ChartSelectedBranch);
+				const ScrollChange* scrollChangeChangeAtCursor = scrollChanges.TryFindLastAtBeat(cursorBeat);
 				const Complex scrollSpeedAtCursor = (scrollChangeChangeAtCursor != nullptr) ? scrollChangeChangeAtCursor->ScrollSpeed : FallbackEvent<ScrollChange>.ScrollSpeed;
 				auto insertOrUpdateCursorScrollSpeedChange = [&](Complex newScrollSpeed)
 				{
 					if (scrollChangeChangeAtCursor == nullptr || scrollChangeChangeAtCursor->BeatTime != cursorBeat)
-						context.Undo.Execute<Commands::AddScrollChange>(&course, &course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
+						context.Undo.Execute<Commands::AddScrollChange>(&course, &scrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
 					else
-						context.Undo.Execute<Commands::UpdateScrollChange>(&course, &course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
+						context.Undo.Execute<Commands::UpdateScrollChange>(&course, &scrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
 				};
 
 				static EScrollUnit unit = EScrollUnit::Scroll;
@@ -2910,11 +3060,11 @@ namespace PeepoDrumKit
 						return false;
 					});
 
-					Gui::PushID(&course.ScrollChanges);
+					Gui::PushID(&scrollChanges);
 					if (!disallowRemoveButton && scrollChangeChangeAtCursor != nullptr && scrollChangeChangeAtCursor->BeatTime == cursorBeat)
 					{
 						if (Gui::Button(UI_WindowName("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-							context.Undo.Execute<Commands::RemoveScrollChange>(&course, &course.ScrollChanges, cursorBeat);
+							context.Undo.Execute<Commands::RemoveScrollChange>(&course, &scrollChanges, cursorBeat);
 					}
 					else
 					{
@@ -2924,9 +3074,17 @@ namespace PeepoDrumKit
 					Gui::EndDisabled();
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
-					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::ScrollChanges)]);
+					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(scrollChangesList)]);
 					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
-						timeline.ExecuteConvertSelectionToEvents<GenericList::ScrollChanges>(context);
+					{
+						switch (context.ChartSelectedBranch)
+						{
+						case BranchType::Normal: timeline.ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Normal>(context); break;
+						case BranchType::Expert: timeline.ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Expert>(context); break;
+						case BranchType::Master: timeline.ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Master>(context); break;
+						default: assert(false); break;
+						}
+					}
 					Gui::EndDisabled();
 
 					Gui::PopID();
@@ -3306,7 +3464,7 @@ namespace PeepoDrumKit
 		if (Gui::CollapsingHeader(UI_Str("DETAILS_LYRICS_EDIT_LINE"), ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			b8 isAnyItemOtherThanLyricsSelected = false;
-			ForEachSelectedChartItem(course, [&](const ForEachChartItemData& it)
+			ForEachSelectedChartItem(course, context.ChartSelectedBranch, [&](const ForEachChartItemData& it)
 			{
 				if (it.List != GenericList::Lyrics) isAnyItemOtherThanLyricsSelected = true;
 			});

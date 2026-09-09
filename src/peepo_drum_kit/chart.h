@@ -418,6 +418,18 @@ namespace PeepoDrumKit
 	template <>
 	inline LyricChange FallbackEvent<LyricChange> = {};
 
+	struct BranchRange
+	{
+		Beat BeatTime;
+		Beat BeatDuration;
+		TJA::BranchCondition Condition = TJA::BranchCondition::Precise;
+		i32 RequirementExpert = 101;
+		i32 RequirementMaster = 101;
+
+		constexpr Beat GetStart() const { return BeatTime; }
+		constexpr Beat GetEnd() const { return BeatTime + BeatDuration; }
+	};
+
 	using SortedNotesList = BeatSortedList<Note>;
 	using SortedScrollChangesList = BeatSortedList<ScrollChange>;
 	using SortedBarLineChangesList = BeatSortedList<BarLineChange>;
@@ -454,12 +466,13 @@ namespace PeepoDrumKit
 
 		SortedTempoMap TempoMap;
 
-		// TODO: Have per-branch scroll speed changes (?)
 		SortedNotesList Notes_Normal;
 		SortedNotesList Notes_Expert;
 		SortedNotesList Notes_Master;
 
-		SortedScrollChangesList ScrollChanges;
+		SortedScrollChangesList ScrollChanges_Normal;
+		SortedScrollChangesList ScrollChanges_Expert;
+		SortedScrollChangesList ScrollChanges_Master;
 		SortedBarLineChangesList BarLineChanges;
 		SortedGoGoRangesList GoGoRanges;
 		SortedLyricsList Lyrics;
@@ -467,6 +480,10 @@ namespace PeepoDrumKit
 		SortedScrollTypesList ScrollTypes;
 		SortedSuddenChangesList SuddenChanges;
 		SortedJPOSScrollChangesList JPOSScrollChanges;
+
+		std::vector<BranchRange> Branches;
+		std::vector<Beat> BranchSections;
+		std::vector<Beat> BranchLevelHolds;
 
 		// i32 ScoreInit = 0;
 		// i32 ScoreDiff = 0;
@@ -479,6 +496,8 @@ namespace PeepoDrumKit
 
 		inline auto& GetNotes(BranchType branch) { assert(branch < BranchType::Count); return (&Notes_Normal)[EnumToIndex(branch)]; }
 		inline auto& GetNotes(BranchType branch) const { assert(branch < BranchType::Count); return (&Notes_Normal)[EnumToIndex(branch)]; }
+		inline auto& GetScrollChanges(BranchType branch) { assert(branch < BranchType::Count); return (&ScrollChanges_Normal)[EnumToIndex(branch)]; }
+		inline auto& GetScrollChanges(BranchType branch) const { assert(branch < BranchType::Count); return (&ScrollChanges_Normal)[EnumToIndex(branch)]; }
 
 		void RecalculateNoteStates()
 		{
@@ -591,6 +610,7 @@ namespace PeepoDrumKit
 
 	b8 CreateChartProjectFromTJA(const TJA::ParsedTJA& inTJA, ChartProject& out);
 	b8 ConvertChartProjectToTJA(const ChartProject& in, TJA::ParsedTJA& out, b8 includePeepoDrumKitComment = true);
+	b8 RunTJAChartBranchSelfTest(std::string& outError);
 }
 
 namespace PeepoDrumKit
@@ -602,7 +622,9 @@ namespace PeepoDrumKit
 		Notes_Normal,
 		Notes_Expert,
 		Notes_Master,
-		ScrollChanges,
+		ScrollChanges_Normal,
+		ScrollChanges_Expert,
+		ScrollChanges_Master,
 		BarLineChanges,
 		GoGoRanges,
 		Lyrics,
@@ -665,7 +687,7 @@ namespace PeepoDrumKit
 
 // EnumNames<> is global
 template <>
-constexpr std::string_view EnumNames<PeepoDrumKit::GenericList>[EnumCount<PeepoDrumKit::GenericList>] = { "TempoChanges", "SignatureChanges", "Notes_Normal", "Notes_Expert", "Notes_Master", "ScrollChanges", "BarLineChanges", "GoGoRanges", "Lyrics", "ScrollType", "JPOSScroll", "Sudden",};
+constexpr std::string_view EnumNames<PeepoDrumKit::GenericList>[EnumCount<PeepoDrumKit::GenericList>] = { "TempoChanges", "SignatureChanges", "Notes_Normal", "Notes_Expert", "Notes_Master", "ScrollChanges_Normal", "ScrollChanges_Expert", "ScrollChanges_Master", "BarLineChanges", "GoGoRanges", "Lyrics", "ScrollType", "JPOSScroll", "Sudden",};
 template <>
 constexpr std::string_view EnumNames<PeepoDrumKit::GenericMember>[EnumCount<PeepoDrumKit::GenericMember>] = {"IsSelected", "BarLineVisible", "BalloonPopCount", "ScrollSpeed", "BeatStart", "BeatDuration", "TimeOffset", "NoteType", "Tempo", "TimeSignature", "Lyric", "ScrollType", "JPOSScrollMove", "JPOSScrollDuration", "SuddenAppearanceOffset", "SuddenMovementOffset", "SuddenHideRoll"};
 
@@ -1140,7 +1162,9 @@ namespace PeepoDrumKit
 		else if constexpr (List == GenericList::Notes_Normal) return (std::forward<ChartCourseT>(course).Notes_Normal);
 		else if constexpr (List == GenericList::Notes_Expert) return (std::forward<ChartCourseT>(course).Notes_Expert);
 		else if constexpr (List == GenericList::Notes_Master) return (std::forward<ChartCourseT>(course).Notes_Master);
-		else if constexpr (List == GenericList::ScrollChanges) return (std::forward<ChartCourseT>(course).ScrollChanges);
+		else if constexpr (List == GenericList::ScrollChanges_Normal) return (std::forward<ChartCourseT>(course).ScrollChanges_Normal);
+		else if constexpr (List == GenericList::ScrollChanges_Expert) return (std::forward<ChartCourseT>(course).ScrollChanges_Expert);
+		else if constexpr (List == GenericList::ScrollChanges_Master) return (std::forward<ChartCourseT>(course).ScrollChanges_Master);
 		else if constexpr (List == GenericList::BarLineChanges) return (std::forward<ChartCourseT>(course).BarLineChanges);
 		else if constexpr (List == GenericList::GoGoRanges) return (std::forward<ChartCourseT>(course).GoGoRanges);
 		else if constexpr (List == GenericList::Lyrics) return (std::forward<ChartCourseT>(course).Lyrics);
@@ -1161,7 +1185,9 @@ namespace PeepoDrumKit
 		else if constexpr (List == GenericList::Notes_Normal) return (std::forward<GenericListStructT>(inValue).POD.Note);
 		else if constexpr (List == GenericList::Notes_Expert) return (std::forward<GenericListStructT>(inValue).POD.Note);
 		else if constexpr (List == GenericList::Notes_Master) return (std::forward<GenericListStructT>(inValue).POD.Note);
-		else if constexpr (List == GenericList::ScrollChanges) return (std::forward<GenericListStructT>(inValue).POD.Scroll);
+		else if constexpr (List == GenericList::ScrollChanges_Normal) return (std::forward<GenericListStructT>(inValue).POD.Scroll);
+		else if constexpr (List == GenericList::ScrollChanges_Expert) return (std::forward<GenericListStructT>(inValue).POD.Scroll);
+		else if constexpr (List == GenericList::ScrollChanges_Master) return (std::forward<GenericListStructT>(inValue).POD.Scroll);
 		else if constexpr (List == GenericList::BarLineChanges) return (std::forward<GenericListStructT>(inValue).POD.BarLine);
 		else if constexpr (List == GenericList::GoGoRanges) return (std::forward<GenericListStructT>(inValue).POD.GoGo);
 		else if constexpr (List == GenericList::Lyrics) return (std::forward<GenericListStructT>(inValue).NonTrivial.Lyric);
@@ -1228,7 +1254,9 @@ namespace PeepoDrumKit
 		X(GenericList::Notes_Normal)
 		X(GenericList::Notes_Expert)
 		X(GenericList::Notes_Master)
-		X(GenericList::ScrollChanges)
+		X(GenericList::ScrollChanges_Normal)
+		X(GenericList::ScrollChanges_Expert)
+		X(GenericList::ScrollChanges_Master)
 		X(GenericList::BarLineChanges)
 		X(GenericList::GoGoRanges)
 		X(GenericList::Lyrics)
@@ -1272,10 +1300,21 @@ namespace PeepoDrumKit
 
 	// course list attribute query functions
 	constexpr b8 IsNotesList(GenericList list) { return (list == GenericList::Notes_Normal) || (list == GenericList::Notes_Expert) || (list == GenericList::Notes_Master); }
+	constexpr b8 IsScrollChangesList(GenericList list) { return (list == GenericList::ScrollChanges_Normal) || (list == GenericList::ScrollChanges_Expert) || (list == GenericList::ScrollChanges_Master); }
+	constexpr GenericList BranchTypeToScrollChangesList(BranchType branch)
+	{
+		assert(branch < BranchType::Count);
+		return static_cast<GenericList>(EnumToIndex(GenericList::ScrollChanges_Normal) + EnumToIndex(branch));
+	}
+	constexpr BranchType ScrollChangesListToBranchType(GenericList list)
+	{
+		assert(IsScrollChangesList(list));
+		return static_cast<BranchType>(EnumToIndex(list) - EnumToIndex(GenericList::ScrollChanges_Normal));
+	}
 	constexpr b8 ListHasDurations(GenericList list) { return IsNotesList(list) || (list == GenericList::GoGoRanges); }
 	constexpr b8 ListIsStartAfterLastEndRequired(GenericList list) { return IsNotesList(list); }
 	constexpr b8 ListIsItemEndBounded(GenericList list) { return IsNotesList(list) || (list == GenericList::GoGoRanges) || (list == GenericList::JPOSScroll); }
-	constexpr b8 ListHasNoteStaticEffects(GenericList list) { return (list == GenericList::TempoChanges) || (list == GenericList::ScrollChanges) || (list == GenericList::ScrollType) || (list == GenericList::Sudden); }
+	constexpr b8 ListHasNoteStaticEffects(GenericList list) { return (list == GenericList::TempoChanges) || IsScrollChangesList(list) || (list == GenericList::ScrollType) || (list == GenericList::Sudden); }
 	constexpr b8 ListHasBarlineStaticEffects(GenericList list) { return ListHasNoteStaticEffects(list) || (list == GenericList::BarLineChanges); }
 
 	constexpr size_t GetGenericMember_RawByteSize(GenericMember member)
@@ -1402,6 +1441,18 @@ namespace PeepoDrumKit
 	}
 
 	template <typename Func>
+	constexpr void ForEachChartItem(const ChartCourse& course, BranchType branch, Func perItemFunc)
+	{
+		const GenericList activeScrollChanges = BranchTypeToScrollChangesList(branch);
+		ApplyForEachGenericList([&](GenericList list, auto&& typedList) {
+			if (IsScrollChangesList(list) && list != activeScrollChanges)
+				return;
+			for (size_t i = 0; i < typedList.size(); i++)
+				perItemFunc(ForEachChartItemData{ list, i });
+		}, course);
+	}
+
+	template <typename Func>
 	constexpr void ForEachSelectedChartItem(const ChartCourse& course, Func perSelectedItemFunc)
 	{
 		ApplyForEachGenericList([&](GenericList list, auto&& typedList) {
@@ -1409,6 +1460,16 @@ namespace PeepoDrumKit
 				if (typedList[i].IsSelected)
 					perSelectedItemFunc(ForEachChartItemData{ list, i });
 		}, course);
+	}
+
+	template <typename Func>
+	constexpr void ForEachSelectedChartItem(const ChartCourse& course, BranchType branch, Func perSelectedItemFunc)
+	{
+		ForEachChartItem(course, branch, [&](const ForEachChartItemData& item)
+		{
+			if (GetIsSelected(item, course))
+				perSelectedItemFunc(item);
+		});
 	}
 
 	// helpers for end-unbounded events
@@ -1425,7 +1486,8 @@ namespace PeepoDrumKit
 		// do not end at note or barline if they are effect targets of the next event
 		Beat lastEffectBeat = Beat::FromTicks(-1);
 		if (ListHasNoteStaticEffects(list)) {
-			for (const auto& note : course.Notes_Normal) { // no sorted-by-end lists => need linear search for handling overlapping notes
+			const SortedNotesList& notes = IsScrollChangesList(list) ? course.GetNotes(ScrollChangesListToBranchType(list)) : course.Notes_Normal;
+			for (const auto& note : notes) { // no sorted-by-end lists => need linear search for handling overlapping notes
 				if (!compare(note.BeatTime, beat))
 					break;
 				if (auto beatEnd = note.BeatTime + note.BeatDuration; compare(beatEnd, beat))
@@ -1466,7 +1528,8 @@ namespace PeepoDrumKit
 		// end at note or barline if they are effect targets of the current event
 		Beat firstEffectBeat = Beat::FromTicks(I32Max);
 		if (ListHasNoteStaticEffects(list)) {
-			for (const auto& note : course.Notes_Normal) { // no sorted-by-end lists => need linear search for handling overlapping notes
+			const SortedNotesList& notes = IsScrollChangesList(list) ? course.GetNotes(ScrollChangesListToBranchType(list)) : course.Notes_Normal;
+			for (const auto& note : notes) { // no sorted-by-end lists => need linear search for handling overlapping notes
 				if (auto beatEnd = note.BeatTime + note.BeatDuration; compare(beatEnd, beat))
 					firstEffectBeat = std::min(firstEffectBeat, beatEnd);
 				if (compare(note.BeatTime, beat))

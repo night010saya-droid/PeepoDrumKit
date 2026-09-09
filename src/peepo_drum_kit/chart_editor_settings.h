@@ -99,6 +99,7 @@ namespace PeepoDrumKit
 			b8 ShowWindow_Help = true;
 			b8 ShowWindow_UpdateNotes = true;
 			b8 ShowWindow_ChartStats = true;
+			b8 ShowWindow_ChartBranches = true;
 			b8 ShowWindow_Settings = true;
 			b8 ShowWindow_AudioTest = false;
 			b8 ShowWindow_TJAImportTest = false;
@@ -203,6 +204,9 @@ namespace PeepoDrumKit
 			WithDefault<MultiInputBinding> Timeline_PlaceNoteKa = { KeyBinding(ImGuiKey_D), KeyBinding(ImGuiKey_K) };
 			WithDefault<MultiInputBinding> Timeline_PlaceNoteBalloon = { KeyBinding(ImGuiKey_E), KeyBinding(ImGuiKey_I) };
 			WithDefault<MultiInputBinding> Timeline_PlaceNoteDrumroll = { KeyBinding(ImGuiKey_R), KeyBinding(ImGuiKey_U) };
+			WithDefault<MultiInputBinding> Timeline_SelectBranchNormal = { KeyBinding(ImGuiKey_1, ImGuiMod_Ctrl) };
+			WithDefault<MultiInputBinding> Timeline_SelectBranchExpert = { KeyBinding(ImGuiKey_2, ImGuiMod_Ctrl) };
+			WithDefault<MultiInputBinding> Timeline_SelectBranchMaster = { KeyBinding(ImGuiKey_3, ImGuiMod_Ctrl) };
 			WithDefault<MultiInputBinding> Timeline_Cut = { KeyBinding(ImGuiKey_X, ImGuiMod_Ctrl) };
 			WithDefault<MultiInputBinding> Timeline_Copy = { KeyBinding(ImGuiKey_C, ImGuiMod_Ctrl) };
 			WithDefault<MultiInputBinding> Timeline_Paste = { KeyBinding(ImGuiKey_V, ImGuiMod_Ctrl) };

@@ -337,9 +337,9 @@ namespace TJA
 		i32 STYLE = 1;
 		i32 START_PLAYERSIDE = 0;
 		std::vector<i32> BALLOON;
-		// std::vector<i32> BALLOON_Normal;
-		// std::vector<i32> BALLOON_Expert;
-		// std::vector<i32> BALLOON_Master;
+		std::vector<i32> BALLOON_Normal;
+		std::vector<i32> BALLOON_Expert;
+		std::vector<i32> BALLOON_Master;
 		// i32 SCOREINIT = 0;
 		// i32 SCOREDIFF = 0;
 		// i32 EXPLICIT = 0;
@@ -353,9 +353,6 @@ namespace TJA
 		std::map<std::string, std::string> Others;
 
 		struct Other { // stored as other metadata
-			std::vector<i32> BALLOON_Normal;
-			std::vector<i32> BALLOON_Expert;
-			std::vector<i32> BALLOON_Master;
 			i32 SCOREINIT = 0;
 			i32 SCOREDIFF = 0;
 			i32 EXPLICIT = 0;
@@ -592,12 +589,22 @@ namespace TJA
 		std::vector<ConvertedBarLineChange> BarLineChanges;
 		std::vector<ConvertedLyricChange> LyricChanges;
 		std::vector<ConvertedGoGoChange> GoGoChanges;
+		std::vector<Beat> BranchSectionChanges;
 	};
 
 	struct ConvertedGoGoRange
 	{
 		Beat StartTime;
 		Beat EndTime;
+	};
+
+	struct ConvertedBranch
+	{
+		Beat StartTime;
+		Beat EndTime;
+		BranchCondition Condition = BranchCondition::Precise;
+		i32 RequirementExpert = 101;
+		i32 RequirementMaster = 101;
 	};
 
 	// TODO: Handle multi player tracks and branches ?!
@@ -609,8 +616,12 @@ namespace TJA
 		ParsedMainMetadata MainMetadata;
 		ParsedCourseMetadata CourseMetadata;
 
-		std::vector<ConvertedMeasure> Measures; // stores first measure start and all measure ends
+		std::vector<ConvertedMeasure> Measures; // normal branch; stores first measure start and all measure ends
+		std::vector<ConvertedMeasure> Measures_Expert;
+		std::vector<ConvertedMeasure> Measures_Master;
 		std::vector<ConvertedGoGoRange> GoGoRanges;
+		std::vector<ConvertedBranch> Branches;
+		std::vector<Beat> BranchLevelHolds;
 	};
 
 	void ConvertConvertedMeasuresToParsedCommands(const std::vector<TJA::ConvertedMeasure>& inMeasures, std::vector<TJA::ParsedChartCommand>& outCommands);

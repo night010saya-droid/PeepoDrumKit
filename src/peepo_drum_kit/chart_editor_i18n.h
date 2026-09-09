@@ -26,6 +26,7 @@ X("TAB_AUDIO_TEST",				"Audio Test") \
 X("TAB_TJA_IMPORT_TEST",		"TJA Import Test") \
 X("TAB_UNDO_HISTORY",			"Undo History") \
 X("TAB_CHART_PROPERTIES",		"Chart Properties") \
+X("TAB_CHART_BRANCHES",			"Chart Branches") \
 X("TAB_INSPECTOR",				"Chart Inspector") \
 /* empty last line */
 
@@ -35,6 +36,7 @@ X("TAB_GAME_PREVIEW",								"Game Preview") \
 X("TAB_TIMELINE",									"Chart Timeline") \
 X("TAB_TIMELINE_DEBUG",								"Chart Timeline - Debug") \
 X("TAB_CHART_PROPERTIES",							"Chart Properties") \
+X("TAB_CHART_BRANCHES",							"Chart Branches") \
 X("TAB_EVENTS",										"Chart Events") \
 X("TAB_LYRICS",										"Chart Lyrics") \
 X("TAB_TEMPO_CALCULATOR",							"Tempo Calculator") \
@@ -232,6 +234,8 @@ X("EVENT_TIME_SIGNATURE",							"Time Signature") \
 X("EVENT_TIME_SIGNATURE_UPPER",						"Upper Time Signature") \
 X("EVENT_TIME_SIGNATURE_LOWER",						"Lower Time Signature") \
 X("EVENT_NOTES",									"Notes") \
+X("EVENT_BRANCH_COMMANDS",                         "Branch Commands") \
+X("EVENT_NOTES_NORMAL",                            "Notes (Normal)") \
 X("EVENT_NOTES_EXPERT",								"Notes (Expert)") \
 X("EVENT_NOTES_MASTER",								"Notes (Master)") \
 X("EVENT_SCROLL_SPEED",								"Scroll Speed") \
@@ -283,6 +287,16 @@ X("COURSE_PROP_PLAYER_SIDE_COUNT",					"Player Side/Count") \
 X("COURSE_PROP_TOWER_LIFE",							"Lives") \
 X("COURSE_PROP_TOWER_SIDE",							"Side") \
 X("COURSE_PROP_CREATOR",							"Course Creator") \
+X("COURSE_PROP_BRANCHES",							"Branches") \
+X("ACT_BRANCH_ADD_FROM_RANGE_SELECTION",			"Add from Range Selection") \
+X("BRANCH_CONDITION_ROLL",						"Roll") \
+X("BRANCH_CONDITION_ACCURACY",					"Accuracy") \
+X("BRANCH_CONDITION_SCORE",						"Score") \
+X("INFO_BRANCH_BEAT_RANGE",						"%.3f - %.3f beats") \
+X("INFO_BRANCH_START_BEAT",                         "Start %.3f") \
+X("INFO_BRANCH_END_BEAT",                           "End %.3f") \
+X("ACT_BRANCH_USE_SELECTION",						"Use Selection") \
+X("ACT_BRANCH_TOGGLE_LEVELHOLD_AT_CURSOR",			"Toggle #LEVELHOLD at Cursor") \
 X("DETAILS_COURSE_PROP_OTHER_METADATA",				"Other Course Metadata") \
 X("ACT_ADD_NEW_METADATA",							"Add New Metadata:") \
 /* inspector tab / timeline tab (contd.) */ \

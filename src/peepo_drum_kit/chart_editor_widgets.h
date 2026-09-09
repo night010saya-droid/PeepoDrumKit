@@ -131,6 +131,11 @@ namespace PeepoDrumKit
 		void DrawGui(ChartContext& context, const ChartPropertiesWindowIn& in, ChartPropertiesWindowOut& out);
 	};
 
+	struct ChartBranchWindow
+	{
+		void DrawGui(ChartContext& context, ChartTimeline& timeline);
+	};
+
 	struct ChartTempoWindow
 	{
 		void DrawGui(ChartContext& context, ChartTimeline& timeline);

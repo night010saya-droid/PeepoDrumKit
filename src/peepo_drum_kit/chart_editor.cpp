@@ -137,7 +137,7 @@ namespace PeepoDrumKit
 			}
 
 			size_t selectedItemCount = 0, selectedNoteCount = 0;
-			ForEachSelectedChartItem(*context.ChartSelectedCourse, [&](const ForEachChartItemData& it) { selectedItemCount++; selectedNoteCount += IsNotesList(it.List); });
+			ForEachSelectedChartItem(*context.ChartSelectedCourse, context.ChartSelectedBranch, [&](const ForEachChartItemData& it) { selectedItemCount++; selectedNoteCount += IsNotesList(it.List); });
 			const b8 isAnyItemSelected = (selectedItemCount > 0);
 			const b8 isAnyNoteSelected = (selectedNoteCount > 0);
 
@@ -443,6 +443,7 @@ namespace PeepoDrumKit
 				}
 
 				Gui::Separator();
+				Gui::MenuItem(UI_Str("TAB_CHART_BRANCHES"), nullptr, &PersistentApp.LastSession.ShowWindow_ChartBranches);
 				if (Gui::MenuItem(UI_Str("TAB_CHART_STATS"), ToShortcutString(*Settings.Input.Editor_OpenChartStats).Data)) { PersistentApp.LastSession.ShowWindow_ChartStats = focusChartStatsWindowNextFrame = true; }
 				if (Gui::MenuItem(UI_Str("TAB_SETTINGS"), ToShortcutString(*Settings.Input.Editor_OpenSettings).Data)) { PersistentApp.LastSession.ShowWindow_Settings = focusSettingsWindowNextFrame = true; }
 
@@ -586,8 +587,13 @@ namespace PeepoDrumKit
 							addToComparedNested(context, [](auto a, auto b) { return (getNDiffs(a, b) - (a->Style != b->Style)) == 0; });
 						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_PLAYERSIDES"), " ", nullptr, !isComparingAll))
 							addToComparedNested(context, [](auto a, auto b) { return (getNDiffs(a, b) - (a->PlayerSide != b->PlayerSide)) == 0; });
-						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_BRANCHES"), "(TODO)", nullptr, false))
-							/* TODO */;
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_BRANCHES"), " "))
+						{
+							for (auto& [course, branches] : context.ChartsCompared)
+								for (BranchType branch = BranchType::Normal; branch < BranchType::Count; IncrementEnum(branch))
+									branches.insert(branch);
+							context.CompareMode = true;
+						}
 
 						Gui::Separator();
 
@@ -685,10 +691,10 @@ namespace PeepoDrumKit
 							if (Gui::BeginTabItem((course.get()->ToString(omitLevel) + "###Course_" + ASCII::ToString(course.get())).c_str(), nullptr, setSelectedThisFrame ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
 							{
 								// TODO: Selecting a course should also be an undo command so that there isn't ever any confusion (?)
-								if (!isSelectedCourseSetThisFrame || setSelectedThisFrame) {
+								if (!isSelected) {
 									context.SetSelectedChart(course.get(), BranchType::Normal);
-									lastFrameSelectedCoursePtrID = context.ChartSelectedCourse;
 								}
+								lastFrameSelectedCoursePtrID = context.ChartSelectedCourse;
 								isAnyCourseTabSelected = true;
 								Gui::EndTabItem();
 							}
@@ -962,6 +968,13 @@ namespace PeepoDrumKit
 
 				if (Gui::IsAnyPressed(*Settings.Input.Editor_ChartSaveAs, false))
 					OpenChartSaveAsDialog(context);
+
+				if (Gui::IsAnyPressed(*Settings.Input.Timeline_SelectBranchNormal, false))
+					context.SetSelectedChart(context.ChartSelectedCourse, BranchType::Normal);
+				if (Gui::IsAnyPressed(*Settings.Input.Timeline_SelectBranchExpert, false))
+					context.SetSelectedChart(context.ChartSelectedCourse, BranchType::Expert);
+				if (Gui::IsAnyPressed(*Settings.Input.Timeline_SelectBranchMaster, false))
+					context.SetSelectedChart(context.ChartSelectedCourse, BranchType::Master);
 			}
 		}
 
@@ -1025,6 +1038,15 @@ namespace PeepoDrumKit
 			tempoWindow.DrawGui(context, timeline);
 		}
 		Gui::End();
+
+		if (PersistentApp.LastSession.ShowWindow_ChartBranches)
+		{
+			if (Gui::Begin(UI_WindowName("TAB_CHART_BRANCHES"), &PersistentApp.LastSession.ShowWindow_ChartBranches, ImGuiWindowFlags_None))
+			{
+				branchWindow.DrawGui(context, timeline);
+			}
+			Gui::End();
+		}
 
 		if (propertiesWindow.FocusCoursePropertyHeaderNextFrame == ChartPropertiesWindow::EFocus::Focus)
 			Gui::SetNextWindowFocus();
@@ -1335,6 +1357,7 @@ namespace PeepoDrumKit
 
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_UNDO_HISTORY"), dock.TopRight);
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_CHART_PROPERTIES"), dock.TopRight);
+			Gui::DockBuilderDockWindow(UI_WindowName("TAB_CHART_BRANCHES"), dock.TopRight);
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_CHART_STATS"), dock.TopRight);
 
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_INSPECTOR"), dock.TopRightBot);
