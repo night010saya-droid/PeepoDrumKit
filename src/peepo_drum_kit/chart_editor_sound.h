@@ -33,13 +33,14 @@ namespace PeepoDrumKit
 		std::string_view Extension;
 	};
 
-	enum class SoundGroup : i32
-	{
-		Master = 0,
-		Metronome = 1,
-		SoundEffects = 2,
-		Count,
-	};
+		enum class SoundGroup : i32
+		{
+			Master = 0,
+			SoundEffects = 1,
+			Balloon = 2,
+			Metronome = 3,
+			Count,
+		};
 
 	struct SoundEffectsVoicePool
 	{

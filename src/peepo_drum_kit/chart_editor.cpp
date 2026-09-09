@@ -911,6 +911,8 @@ namespace PeepoDrumKit
 		{
 			context.SongVoice.SetVolume(context.Chart.SongVolume);
 			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::SoundEffects, context.Chart.SoundEffectVolume);
+			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::Balloon, *Settings.Audio.BalloonVolume);
+			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::Metronome, *Settings.Audio.MetronomeVolume);
 		}
 
 		// NOTE: Drag and drop handling

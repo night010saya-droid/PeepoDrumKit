@@ -812,21 +812,38 @@ namespace PeepoDrumKit
 
 		Gui::UpdateSmoothScrollWindow();
 
-		Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
+		if (Gui::BeginPopupContextWindow("StatsContextMenu", 0))
+		{
+			if (Gui::MenuItem(UI_Str("STATS_FONT_SIZE_ZOOM_IN"), nullptr, false, FontScale < 2.0f))
+				FontScale = Min(FontScale + 0.1f, 2.0f);
+			if (Gui::MenuItem(UI_Str("STATS_FONT_SIZE_ZOOM_OUT"), nullptr, false, FontScale > 0.5f))
+				FontScale = Max(FontScale - 0.1f, 0.5f);
+			if (Gui::MenuItem(UI_Str("STATS_FONT_SIZE_RESET"), nullptr, false, FontScale != 1.0f))
+				FontScale = 1.0f;
+			Gui::Text(UI_Str("STATS_FONT_SIZE_CURRENT"), ToPercent(FontScale));
+			Gui::EndPopup();
+		}
+
+		auto statsFontSize = [&](FontBaseSizes baseSize)
+		{
+			return GuiScaleI32_AtTarget(static_cast<i32>(Round(static_cast<f32>(baseSize) * FontScale)));
+		};
+
+		Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Large));
 		{
 			// Header with chart main information
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenDark);
-				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
-				Gui::TextUnformatted("Chart Stats");
+				Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Large));
+				Gui::TextUnformatted(UI_Str("TAB_CHART_STATS"));
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenBright);
-				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
+				Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Medium));
 				Gui::Text("%s", chart.ChartTitle.c_str());
 				Gui::PopFont();
-				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
+				Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Small));
 				Gui::Text("%s", trimPrefix(chart.ChartSubtitle).c_str());
 				Gui::Text("Charter: %s", course.CourseCreator.c_str());
 				Gui::Text("%s Lv.%.*f %s", UI_StrRuntime(DifficultyTypeNames[(int)course.Type]), course.LevelDecimalPlaces, course.Level, GetStyleName(course.Style, course.PlayerSide).c_str());
@@ -846,47 +863,97 @@ namespace PeepoDrumKit
 					return !hasRangeSelection || (note.GetStart() <= rangeSelectionMax && note.GetEnd() >= rangeSelectionMin);
 				};
 
-				int _donCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsDonNote(N.Type);});
-				int _kaCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaNote(N.Type);});
+				int _donSmallCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsDonNote(N.Type) && !IsBigNote(N.Type);});
+				int _donBigCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsDonNote(N.Type) && IsBigNote(N.Type);});
+				int _kaSmallCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaNote(N.Type) && !IsBigNote(N.Type);});
+				int _kaBigCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaNote(N.Type) && IsBigNote(N.Type);});
+				int _donCount = _donSmallCount + _donBigCount;
+				int _kaCount = _kaSmallCount + _kaBigCount;
 				int _kaDonCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsKaDonNote(N.Type);});
 				int _adLibCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsAdlibNote(N.Type);});
 				int _bombCount = notes.CountIf([&](const Note& N) {return isInStatsRange(N) && IsBombNote(N.Type);});
+				f64 _rollDuration = 0.0;
+				f64 _balloonDuration = 0.0;
+				int _balloonPopCount = 0;
+				for (const Note& note : notes)
+				{
+					if (!isInStatsRange(note)) continue;
+					Beat noteStart = note.GetStart();
+					Beat noteEnd = note.GetEnd();
+					if (hasRangeSelection)
+					{
+						noteStart = Max(noteStart, rangeSelectionMin);
+						noteEnd = Min(noteEnd, rangeSelectionMax);
+					}
+					const f64 noteDuration = (noteEnd > noteStart)
+						? (context.BeatToTime(noteEnd) - context.BeatToTime(noteStart)).Seconds
+						: 0.0;
+					if (IsDrumrollNote(note.Type)) _rollDuration += noteDuration;
+					if (IsBalloonNote(note.Type))
+					{
+						_balloonDuration += noteDuration;
+						_balloonPopCount += note.BalloonPopCount;
+					}
+				}
 				int _maxCombo = _donCount + _kaCount + _kaDonCount;
 
 				const Time statsDuration = hasRangeSelection ? context.GetRangeSelectionDuration() : chart.ChartDuration;
 				f64 _density = statsDuration.Seconds > 0.0 ? _maxCombo / statsDuration.Seconds : 0.0;
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
-				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
-				Gui::Text("Max Combo: %d", _maxCombo);
+				Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Large));
+				Gui::Text(UI_Str("STATS_MAX_COMBO"), _maxCombo);
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
-				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
-				Gui::Text("Duration: %.3f sec", statsDuration.Seconds);
+				Gui::PushFont(FontMain, statsFontSize(FontBaseSizes::Medium));
+				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
+				Gui::Text(UI_Str("STATS_DURATION"), statsDuration.Seconds);
+				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
-				Gui::Text("Density: %.3f hit/s", _density);
+				Gui::Text(UI_Str("STATS_DENSITY"), _density);
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 122, 122, 255));
-				Gui::Text("Don: %d", _donCount);
+				Gui::Text(UI_Str("STATS_DON"), _donCount, _donSmallCount, _donBigCount);
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(122, 122, 255, 255));
-				Gui::Text("Ka: %d", _kaCount);
+				Gui::Text(UI_Str("STATS_KA"), _kaCount, _kaSmallCount, _kaBigCount);
 				Gui::PopStyleColor();
 
+				const int _donKaTotal = _donCount + _kaCount;
+				Gui::TextUnformatted(UI_Str("STATS_DON_KA_RATIO"));
+				Gui::SameLine(0.0f, 0.0f);
+				if (_donKaTotal > 0)
+				{
+					Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 122, 122, 255));
+					Gui::Text(UI_Str("STATS_RATIO_PERCENT"), 100.0 * _donCount / _donKaTotal);
+					Gui::PopStyleColor();
+					Gui::SameLine(0.0f, 0.0f);
+					Gui::TextUnformatted("/");
+					Gui::SameLine(0.0f, 0.0f);
+					Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(122, 122, 255, 255));
+					Gui::Text(UI_Str("STATS_RATIO_PERCENT"), 100.0 * _kaCount / _donKaTotal);
+					Gui::PopStyleColor();
+				}
+				else
+					Gui::TextUnformatted("N/A");
+
+				Gui::Text(UI_Str("STATS_ROLL"), _rollDuration);
+				Gui::Text(UI_Str("STATS_BALLOON"), _balloonDuration, _balloonPopCount);
+
 				Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 122, 255, 255));
-				Gui::Text("KaDon: %d", _kaDonCount);
+				if (_kaDonCount > 0) Gui::Text(UI_Str("STATS_KADON"), _kaDonCount);
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-				Gui::Text("Adlib: %d", _adLibCount);
+				if (_adLibCount > 0) Gui::Text(UI_Str("STATS_ADLIB"), _adLibCount);
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(122, 122, 122, 255));
-				Gui::Text("Bomb: %d", _bombCount);
+				if (_bombCount > 0) Gui::Text(UI_Str("STATS_BOMB"), _bombCount);
 				Gui::PopStyleColor();
 				
 				Gui::PopFont();
@@ -1133,7 +1200,7 @@ namespace PeepoDrumKit
 		auto& chart = context.Chart;
 		auto& course = *context.ChartSelectedCourse;
 
-		if (Gui::CollapsingHeader("Automatic measurement", ImGuiTreeNodeFlags_DefaultOpen))
+		if (Gui::CollapsingHeader(UI_Str("TEMPO_AUTOMATIC_MEASUREMENT"), ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			if (TempoAnalysisRunning && TempoAnalysisFuture.valid() && TempoAnalysisFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
 			{
@@ -1142,7 +1209,7 @@ namespace PeepoDrumKit
 				HasTempoAnalysis = TempoAnalysis.IsValid();
 			}
 
-			if (Gui::Button("Analyze audio", { Gui::CalcItemWidth(), 0.0f }) && !TempoAnalysisRunning)
+			if (Gui::Button(UI_Str("TEMPO_ANALYZE_AUDIO"), { Gui::CalcItemWidth(), 0.0f }) && !TempoAnalysisRunning)
 			{
 				TempoAnalysis = {};
 				HasTempoAnalysis = false;
@@ -1159,9 +1226,9 @@ namespace PeepoDrumKit
 					IsTempoAnalysisUnavailable = true;
 			}
 			if (TempoAnalysisRunning)
-				Gui::TextDisabled("Analyzing audio...");
+				Gui::TextDisabled(UI_Str("TEMPO_ANALYZING_AUDIO"));
 			else if (IsTempoAnalysisUnavailable)
-				Gui::TextDisabled("Load a song before analyzing.");
+				Gui::TextDisabled(UI_Str("TEMPO_LOAD_SONG"));
 			else if (HasTempoAnalysis)
 			{
 				for (size_t i = 0; i < TempoAnalysis.CandidateCount; ++i)
@@ -1169,7 +1236,7 @@ namespace PeepoDrumKit
 					const auto& candidate = TempoAnalysis.Candidates[i];
 					Gui::Text("%.3f BPM / %.0f ms", candidate.BPM, candidate.Offset.ToMS());
 					Gui::SameLine();
-					const std::string buttonLabel = "Apply##TempoAnalysis" + std::to_string(i);
+					const std::string buttonLabel = std::string(UI_Str("TEMPO_APPLY")) + "##TempoAnalysis" + std::to_string(i);
 					if (Gui::Button(buttonLabel.c_str()))
 					{
 						context.Undo.Execute<Commands::AddTempoChange>(&course, &course.TempoMap, TempoChange(Beat::Zero(), Tempo(candidate.BPM)));
@@ -1178,10 +1245,10 @@ namespace PeepoDrumKit
 				}
 			}
 			else if (!IsTempoAnalysisUnavailable)
-				Gui::TextDisabled("No reliable onset candidates found.");
+				Gui::TextDisabled(UI_Str("TEMPO_NO_ONSET"));
 
 			Gui::Separator();
-			Gui::Text("Song offset: %.3f ms", chart.SongOffset.ToMS());
+			Gui::Text(UI_Str("TEMPO_SONG_OFFSET"), chart.SongOffset.ToMS());
 			Gui::SameLine();
 			if (f32 offsetMS = chart.SongOffset.ToMS_F32(); Gui::SpinFloat("##TempoCalculatorSongOffset", &offsetMS, 1.0f, 10.0f, "%.3f ms", ImGuiInputTextFlags_None))
 				context.Undo.Execute<Commands::ChangeSongOffset>(&chart, Time::FromMS(offsetMS));
@@ -1189,7 +1256,7 @@ namespace PeepoDrumKit
 			const TempoChange* initialTempoChange = course.TempoMap.Tempo.TryFindLastAtBeat(Beat::Zero());
 			const f64 initialBPM = (initialTempoChange != nullptr) ? initialTempoChange->Tempo.BPM : FallbackTempo.BPM;
 			const f64 beatDuration = (std::abs(initialBPM) > 0.0001) ? 60.0 / std::abs(initialBPM) : 0.0;
-			Gui::Text("Offset shift (initial BPM %.3f)", initialBPM);
+			Gui::Text(UI_Str("TEMPO_OFFSET_SHIFT"), initialBPM);
 			if (beatDuration > 0.0)
 			{
 				const auto shiftOffset = [&](f64 beats)
@@ -1210,7 +1277,7 @@ namespace PeepoDrumKit
 			}
 		}
 
-		if (!Gui::CollapsingHeader("Manual measurement", ImGuiTreeNodeFlags_DefaultOpen))
+		if (!Gui::CollapsingHeader(UI_Str("TEMPO_MANUAL_MEASUREMENT"), ImGuiTreeNodeFlags_DefaultOpen))
 			return;
 
 		Gui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
@@ -2679,7 +2746,9 @@ namespace PeepoDrumKit
 			auto commandButton = [&](cstr commandName, b8 existsAtCursor, auto add, auto remove)
 			{
 				Gui::PushID(commandName);
-				Gui::Property::PropertyTextValueFunc(commandName, [&]
+				const cstr localizedCommandName = strcmp(commandName, "#SECTION") == 0 ? UI_Str("BRANCH_COMMAND_SECTION")
+					: strcmp(commandName, "#BRANCHSTART") == 0 ? UI_Str("BRANCH_COMMAND_START") : UI_Str("BRANCH_COMMAND_END");
+				Gui::Property::PropertyTextValueFunc(localizedCommandName, [&]
 				{
 					if (Gui::Button(UI_StrRuntime(existsAtCursor ? "ACT_EVENT_REMOVE" : "ACT_EVENT_ADD"), vec2(-1.0f, 0.0f)))
 					{
@@ -2761,7 +2830,7 @@ namespace PeepoDrumKit
 				}
 			}
 			Gui::SameLine();
-			if (Gui::Button("Remove"))
+			if (Gui::Button(UI_Str("ACT_EVENT_REMOVE")))
 				branchToRemove = i;
 			Gui::PopID();
 		}

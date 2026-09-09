@@ -930,6 +930,18 @@ namespace PeepoDrumKit
 							SettingsGui::WidgetType::F32_AudioMasterVolume),
 
 						SettingsGui::SettingsEntry(
+							settings.Audio.BalloonVolume,
+							UI_Str("SETTINGS_AUDIO_BALLOON_VOLUME"),
+							UI_Str("SETTINGS_AUDIO_BALLOON_VOLUME_DESC"),
+							SettingsGui::WidgetType::F32_AudioMasterVolume),
+
+						SettingsGui::SettingsEntry(
+							settings.Audio.MetronomeVolume,
+							UI_Str("SETTINGS_AUDIO_METRONOME_VOLUME"),
+							UI_Str("SETTINGS_AUDIO_METRONOME_VOLUME_DESC"),
+							SettingsGui::WidgetType::F32_AudioMasterVolume),
+
+						SettingsGui::SettingsEntry(
 							settings.General.DrumrollPreviewRollsPerSecond,
 							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW"),
 							UI_Str("SETTINGS_GENERAL_DRUMROLL_PREVIEW_DESC"),

@@ -160,6 +160,8 @@ namespace PeepoDrumKit
 			WithDefault<b8> CloseDeviceOnIdleFocusLoss = false;
 			WithDefault<b8> RequestExclusiveDeviceAccess = false;
 			WithDefault<f32> MasterVolume = 0.75f;
+			WithDefault<f32> BalloonVolume = 1.0f;
+			WithDefault<f32> MetronomeVolume = 1.0f;
 			WithDefault<i32> BufferFrameSize = 0;
 		} Audio;
 

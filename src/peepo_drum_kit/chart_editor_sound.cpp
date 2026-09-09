@@ -92,7 +92,7 @@ namespace PeepoDrumKit
 	{
 		Audio::Engine.EnsureStreamRunning();
 		const b8 isMetronome = (type >= SoundEffectType::MetronomeBar);
-		const SoundGroup soundGroup = isMetronome ? SoundGroup::Metronome : SoundGroup::SoundEffects;
+		const SoundGroup soundGroup = isMetronome ? SoundGroup::Metronome : (type == SoundEffectType::Balloon ? SoundGroup::Balloon : SoundGroup::SoundEffects);
 		const b8 audible = (GetSoundGroupVolume(soundGroup) != 0) && (GetSoundGroupVolume(SoundGroup::Master) != 0);
 		if (audible)
 		{

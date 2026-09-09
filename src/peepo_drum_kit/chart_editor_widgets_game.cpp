@@ -731,6 +731,8 @@ namespace PeepoDrumKit
 						// clear all selection
 						auto& course = *context.ChartSelectedCourse;
 						for (TimelineRowType rowType = {}; rowType < TimelineRowType::Count; IncrementEnum(rowType)) {
+							if (rowType == TimelineRowType::BranchCommands)
+								continue;
 							const GenericList list = TimelineRowToGenericList(rowType, context.ChartSelectedBranch);
 							for (size_t i = 0; i < GetGenericListCount(course, list); ++i)
 								TrySet<GenericMember::B8_IsSelected>(course, list, i, false);

@@ -45,7 +45,35 @@ X("TAB_INSPECTOR",									"Chart Inspector") \
 X("TAB_SETTINGS",									"Settings") \
 X("TAB_USAGE_GUIDE",								"Usage Guide") \
 X("TAB_UPDATE_NOTES",								"Update Notes") \
-X("TAB_CHART_STATS",								"Chart Stats") \
+X("TAB_CHART_STATS",								"Stats") \
+X("BRANCH_COMMAND_SECTION",						"Section") \
+X("BRANCH_COMMAND_START",							"Branch Start") \
+X("BRANCH_COMMAND_END",							"Branch End") \
+X("TEMPO_AUTOMATIC_MEASUREMENT",					"Automatic measurement") \
+X("TEMPO_ANALYZE_AUDIO",							"Analyze audio") \
+X("TEMPO_ANALYZING_AUDIO",							"Analyzing audio...") \
+X("TEMPO_LOAD_SONG",								"Load a song before analyzing.") \
+X("TEMPO_APPLY",									"Apply") \
+X("TEMPO_NO_ONSET",								"No reliable onset candidates found.") \
+X("TEMPO_SONG_OFFSET",								"Song offset: %.3f ms") \
+X("TEMPO_OFFSET_SHIFT",								"Offset shift (initial BPM %.3f)") \
+X("TEMPO_MANUAL_MEASUREMENT",						"Manual measurement") \
+X("STATS_FONT_SIZE_ZOOM_IN",					"Increase Text Size") \
+X("STATS_FONT_SIZE_ZOOM_OUT",					"Decrease Text Size") \
+X("STATS_FONT_SIZE_RESET",						"Reset Text Size") \
+X("STATS_FONT_SIZE_CURRENT",					"Text Size: %g%%") \
+X("STATS_MAX_COMBO",								"Max Combo: %d") \
+X("STATS_DURATION",								"Duration: %.3f sec") \
+X("STATS_DENSITY",								"Density: %.3f hit/s") \
+X("STATS_DON",									"Don: %d (%d/%d)") \
+X("STATS_KA",									"Ka: %d (%d/%d)") \
+X("STATS_DON_KA_RATIO",							"Don/Ka Ratio:") \
+X("STATS_RATIO_PERCENT",							"%.1f%%") \
+X("STATS_ROLL",									"Roll: %.3f sec") \
+X("STATS_BALLOON",								"Balloon: %.3f sec, %d hits") \
+X("STATS_KADON",									"KaDon: %d") \
+X("STATS_ADLIB",									"Adlib: %d") \
+X("STATS_BOMB",									"Bomb: %d") \
 X("TAB_TJA_EXPORT_DEBUG_VIEW",						"TJA Export Debug View") \
 X("TAB_TJA_IMPORT_TEST",							"TJA Import Test") \
 X("TAB_AUDIO_TEST",									"Audio Test") \
@@ -84,6 +112,10 @@ X("SETTINGS_AUDIO_OPEN_STARTUP", "Open Device on Startup") \
 X("SETTINGS_AUDIO_OPEN_STARTUP_DESC", "Create an audio session as soon as the program starts.") \
 X("SETTINGS_AUDIO_MASTER_VOLUME", "Master Volume") \
 X("SETTINGS_AUDIO_MASTER_VOLUME_DESC", "Set the application's master volume.") \
+X("SETTINGS_AUDIO_BALLOON_VOLUME", "Balloon Volume") \
+X("SETTINGS_AUDIO_BALLOON_VOLUME_DESC", "Set the volume of balloon sounds independently from chart sound effect volume.") \
+X("SETTINGS_AUDIO_METRONOME_VOLUME", "Metronome Volume") \
+X("SETTINGS_AUDIO_METRONOME_VOLUME_DESC", "Set the volume of metronome sounds.") \
 X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS", "Close Device on Idle Focus Loss") \
 X("SETTINGS_AUDIO_CLOSE_FOCUS_LOSS_DESC", "Automatically close the audio session when losing window focus and while not playing any sounds.") \
 X("SETTINGS_AUDIO_EXCLUSIVE_MODE", "Low-Latency Exclusive Mode") \
