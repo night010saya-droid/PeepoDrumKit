@@ -258,8 +258,7 @@ namespace PeepoDrumKit
 			if ((rowType == TimelineRowType::BranchCommands && !hasBranches && course.BranchSections.empty()) ||
 				(IsBranchNoteRow(rowType) && !hasBranches))
 				continue;
-			// HACK: Draw the non default branches smaller for now to waste less space (might wanna rethink all of this...)
-			const b8 isNotesRow = rowType == TimelineRowType::Notes || rowType == TimelineRowType::Notes_Normal;
+			const b8 isNotesRow = rowType == TimelineRowType::Notes || IsBranchNoteRow(rowType);
 
 			const f32 localHeight = GuiScale(isNotesRow ? TimelineRowHeightNotes : TimelineRowHeight) * timeline.Camera.ZoomCurrent.y;
 
@@ -2896,6 +2895,36 @@ namespace PeepoDrumKit
 					if (Gui::IsAnyPressed(*Settings.Input.Timeline_DeleteSelection, false)) ExecuteClipboardAction(context, ClipboardAction::Delete);
 
 					SelectionActionParam param {};
+					auto executeScrollChangeConversion = [&]
+					{
+						switch (context.ChartSelectedBranch)
+						{
+						case BranchType::Normal: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Normal>(context); break;
+						case BranchType::Expert: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Expert>(context); break;
+						case BranchType::Master: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Master>(context); break;
+						default: assert(false); break;
+						}
+					};
+
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertTempoChangeAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::TempoChanges>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertTimeSignatureChangeAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::SignatureChanges>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertScrollChangeAtSelectedItems, false))
+						executeScrollChangeConversion();
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertBarLineChangeAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::BarLineChanges>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertScrollTypeAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::ScrollType>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertJPOSScrollAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::JPOSScroll>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertSuddenAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::Sudden>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertGoGoRangeAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::GoGoRanges>(context);
+					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InsertLyricAtSelectedItems, false))
+						ExecuteConvertSelectionToEvents<GenericList::Lyrics>(context);
+
 					if (Gui::IsAnyPressed(*Settings.Input.Timeline_SelectAll, false)) ExecuteSelectionAction(context, SelectionAction::SelectAll, param);
 					if (Gui::IsAnyPressed(*Settings.Input.Timeline_ClearSelection, false)) ExecuteSelectionAction(context, SelectionAction::UnselectAll, param);
 					if (Gui::IsAnyPressed(*Settings.Input.Timeline_InvertSelection, false)) ExecuteSelectionAction(context, SelectionAction::InvertAll, param);
@@ -2921,15 +2950,7 @@ namespace PeepoDrumKit
 					}
 
 					if (Gui::IsAnyPressed(*Settings.Input.Timeline_ConvertSelectionToScrollChanges, false))
-					{
-						switch (context.ChartSelectedBranch)
-						{
-						case BranchType::Normal: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Normal>(context); break;
-						case BranchType::Expert: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Expert>(context); break;
-						case BranchType::Master: ExecuteConvertSelectionToEvents<GenericList::ScrollChanges_Master>(context); break;
-						default: assert(false); break;
-						}
-					}
+						executeScrollChangeConversion();
 				}
 
 				if (const auto& io = Gui::GetIO(); !io.KeyCtrl)

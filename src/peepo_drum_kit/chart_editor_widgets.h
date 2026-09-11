@@ -55,6 +55,54 @@ namespace PeepoDrumKit
 		void DrawGui(ChartContext& context);
 	};
 
+	struct ChartTemplateWindow
+	{
+		struct TemplateEntry
+		{
+			std::string Name;
+			std::string FilePath;
+			std::string Category;
+			std::string Memo;
+			std::string ClipboardText;
+			b8 IsFavorite = false;
+			i64 LastWriteTime = 0;
+			b8 IsValid = false;
+		};
+		enum class TemplateSortMode : u8 { Custom, Name, Updated };
+
+		std::string TemplateName;
+		std::string TemplateCategory;
+		std::string Memo;
+		std::string CategoryFilter;
+		TemplateSortMode SortMode = TemplateSortMode::Custom;
+		std::vector<std::string> CustomOrder;
+		std::string StatusMessage;
+		std::string PendingFilePath;
+		std::string PendingFileContent;
+		std::string PendingCategory;
+		std::string NewCategory;
+		i32 PendingTemplateIndex = -1;
+		i32 PendingDragSource = -1;
+		i32 PendingDragTarget = -1;
+		std::vector<TemplateEntry> Templates;
+		std::vector<std::string> Categories;
+		b8 HasLoadedTemplates = false;
+		b8 OpenOverwritePopup = false;
+		b8 OpenCategoryPopup = false;
+		b8 OpenDeletePopup = false;
+		b8 OpenCategoryRegistrationPopup = false;
+		b8 RefreshAfterFavoriteChange = false;
+
+		void DrawGui();
+		void RefreshTemplates();
+		void RefreshCategories();
+		b8 SaveCategories();
+		void RefreshFavorites();
+		b8 SaveFavorites();
+		void RefreshCustomOrder();
+		b8 SaveCustomOrder();
+	};
+
 	struct ChartChartStatsWindow
 	{
 		f32 FontScale = 1.0f;

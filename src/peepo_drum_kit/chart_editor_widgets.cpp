@@ -3,7 +3,10 @@
 #include "chart_editor_undo.h"
 #include "chart_editor_i18n.h"
 #include "core_build_info.h"
+#include "core_io.h"
 
+#include <charconv>
+#include <filesystem>
 #include <map>
 
 // TODO: Populate char[U8Max] lookup table using provided flags and index into instead of using a switch (?)
@@ -43,6 +46,566 @@ static void ConvertToEscapeSequences(const std::string_view in, std::string& out
 
 namespace PeepoDrumKit
 {
+	static constexpr std::string_view TemplateFileMagic = "PeepoDrumKit Template v1\n";
+	static constexpr std::string_view TemplateCategorySizePrefix = "Category-Bytes: ";
+	static constexpr std::string_view TemplateMemoSizePrefix = "Memo-Bytes: ";
+	static constexpr std::string_view TemplateClipboardSizePrefix = "Clipboard-Bytes: ";
+
+	static std::string GetTemplateDirectoryPath()
+	{
+		return Directory::GetExecutableDirectory() + "/Template";
+	}
+
+	static b8 EnsureTemplateDirectoryExists()
+	{
+		const std::string directoryPath = GetTemplateDirectoryPath();
+		return Directory::Exists(directoryPath) || Directory::Create(directoryPath);
+	}
+
+	static std::string GetTemplateCategoriesPath()
+	{
+		return GetTemplateDirectoryPath() + "/categories.txt";
+	}
+	static std::string GetTemplateFavoritesPath() { return GetTemplateDirectoryPath() + "/favorites.txt"; }
+	static std::string GetTemplateOrderPath() { return GetTemplateDirectoryPath() + "/order.txt"; }
+	static void ReadLineFile(std::string_view path, std::vector<std::string>& outLines)
+	{
+		auto content = File::ReadAllBytes(path);
+		if (content.Content == nullptr) return;
+		std::string line;
+		for (char character : content.AsString())
+		{
+			if (character == '\n')
+			{
+				if (!line.empty() && line.back() == '\r') line.pop_back();
+				if (!line.empty() && std::find(outLines.begin(), outLines.end(), line) == outLines.end()) outLines.push_back(line);
+				line.clear();
+			}
+			else line += character;
+		}
+		if (!line.empty() && std::find(outLines.begin(), outLines.end(), line) == outLines.end()) outLines.push_back(line);
+	}
+
+	static b8 IsValidTemplateName(std::string_view name)
+	{
+		if (name.empty() || name == "." || name == ".." || name.back() == '.' || name.back() == ' ')
+			return false;
+
+		for (const unsigned char character : name)
+			if (character < 32 || std::string_view("<>:\"/\\|?*").find(character) != std::string_view::npos)
+				return false;
+
+		std::string upperName(name);
+		std::transform(upperName.begin(), upperName.end(), upperName.begin(), [](unsigned char character) { return static_cast<char>(std::toupper(character)); });
+		const std::string_view deviceName = std::string_view(upperName).substr(0, upperName.find('.'));
+		static constexpr std::string_view reservedNames[] = { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+		for (const std::string_view reservedName : reservedNames)
+			if (deviceName == reservedName)
+				return false;
+		return true;
+	}
+
+	static std::string NormalizeTemplateName(std::string_view name)
+	{
+		while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front()))) name.remove_prefix(1);
+		while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back()))) name.remove_suffix(1);
+		if (name.size() >= 4)
+		{
+			std::string extension(name.substr(name.size() - 4));
+			std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+			if (extension == ".txt") name.remove_suffix(4);
+		}
+		return std::string(name);
+	}
+
+	static std::string SerializeTemplate(std::string_view category, std::string_view memo, std::string_view clipboardText)
+	{
+		std::string output;
+		output.reserve(TemplateFileMagic.size() + category.size() + memo.size() + clipboardText.size() + 80);
+		output += TemplateFileMagic;
+		output += TemplateCategorySizePrefix;
+		output += std::to_string(category.size());
+		output += '\n';
+		output += TemplateMemoSizePrefix;
+		output += std::to_string(memo.size());
+		output += '\n';
+		output += TemplateClipboardSizePrefix;
+		output += std::to_string(clipboardText.size());
+		output += "\n\n";
+		output += category;
+		output += memo;
+		output += clipboardText;
+		return output;
+	}
+
+	static b8 DeserializeTemplate(std::string_view content, std::string& outCategory, std::string& outMemo, std::string& outClipboardText)
+	{
+		if (content.size() < TemplateFileMagic.size() || content.substr(0, TemplateFileMagic.size()) != TemplateFileMagic)
+			return false;
+
+		size_t position = TemplateFileMagic.size();
+		auto readSizeLine = [&](std::string_view prefix, size_t& outSize)
+		{
+			if (content.size() - position < prefix.size() || content.substr(position, prefix.size()) != prefix)
+				return false;
+			position += prefix.size();
+			const size_t lineEnd = content.find('\n', position);
+			if (lineEnd == std::string_view::npos)
+				return false;
+			const char* begin = content.data() + position;
+			const char* end = content.data() + lineEnd;
+			const auto result = std::from_chars(begin, end, outSize);
+			if (result.ec != std::errc() || result.ptr != end)
+				return false;
+			position = lineEnd + 1;
+			return true;
+		};
+
+		size_t categorySize = 0, memoSize = 0, clipboardSize = 0;
+		const bool hasCategoryHeader = readSizeLine(TemplateCategorySizePrefix, categorySize);
+		if (!readSizeLine(TemplateMemoSizePrefix, memoSize) || !readSizeLine(TemplateClipboardSizePrefix, clipboardSize))
+			return false;
+		if (position >= content.size() || content[position++] != '\n')
+			return false;
+		const size_t bodySize = content.size() - position;
+		if (hasCategoryHeader && categorySize + memoSize + clipboardSize != bodySize)
+		{
+			// Compatibility with the broken category format written by earlier builds.
+			if (memoSize + clipboardSize != bodySize)
+				return false;
+			categorySize = 0;
+		}
+		else if (!hasCategoryHeader && memoSize + clipboardSize != bodySize)
+			return false;
+		if (categorySize > bodySize || memoSize > bodySize - categorySize)
+			return false;
+		const size_t memoPosition = position + categorySize;
+		const size_t clipboardPosition = memoPosition + memoSize;
+		outCategory.assign(content.substr(position, categorySize));
+		outMemo.assign(content.substr(memoPosition, memoSize));
+		outClipboardText.assign(content.substr(clipboardPosition, clipboardSize));
+		return true;
+	}
+
+	void ChartTemplateWindow::RefreshTemplates()
+	{
+		Templates.clear();
+		RefreshCategories();
+		HasLoadedTemplates = true;
+		if (!EnsureTemplateDirectoryExists())
+		{
+			StatusMessage = UI_Str("TEMPLATE_DIRECTORY_FAILED");
+			return;
+		}
+
+		std::error_code error;
+		for (std::filesystem::directory_iterator iterator(std::filesystem::u8path(GetTemplateDirectoryPath()), error), end; !error && iterator != end; iterator.increment(error))
+		{
+			if (!iterator->is_regular_file(error) || error)
+				continue;
+			std::string extension = iterator->path().extension().u8string();
+			std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+			if (extension != ".txt")
+				continue;
+			const std::string fileName = iterator->path().filename().u8string();
+			if (fileName == "categories.txt" || fileName == "favorites.txt" || fileName == "order.txt")
+				continue;
+
+			TemplateEntry& entry = Templates.emplace_back();
+			entry.Name = iterator->path().stem().u8string();
+			entry.FilePath = iterator->path().u8string();
+			std::error_code timeError;
+			entry.LastWriteTime = iterator->last_write_time(timeError).time_since_epoch().count();
+			auto content = File::ReadAllBytes(entry.FilePath);
+			if (content.Content != nullptr)
+				entry.IsValid = DeserializeTemplate(content.AsString(), entry.Category, entry.Memo, entry.ClipboardText);
+			if (entry.IsValid && !entry.Category.empty() && std::find(Categories.begin(), Categories.end(), entry.Category) == Categories.end())
+				Categories.push_back(entry.Category);
+		}
+		RefreshFavorites();
+		RefreshCustomOrder();
+		SaveCustomOrder();
+		auto customIndex = [this](const TemplateEntry& entry)
+		{
+			const auto found = std::find(CustomOrder.begin(), CustomOrder.end(), entry.Name);
+			return found == CustomOrder.end() ? CustomOrder.size() : static_cast<size_t>(found - CustomOrder.begin());
+		};
+		std::sort(Templates.begin(), Templates.end(), [&](const TemplateEntry& left, const TemplateEntry& right)
+		{
+			if (left.IsFavorite != right.IsFavorite) return left.IsFavorite > right.IsFavorite;
+			if (SortMode == TemplateSortMode::Name) return left.Name < right.Name;
+			if (SortMode == TemplateSortMode::Updated) return left.LastWriteTime > right.LastWriteTime;
+			return customIndex(left) < customIndex(right);
+		});
+		std::sort(Categories.begin(), Categories.end());
+		SaveCategories();
+		if (error)
+			StatusMessage = UI_Str("TEMPLATE_REFRESH_FAILED");
+	}
+
+	void ChartTemplateWindow::RefreshFavorites()
+	{
+		std::vector<std::string> favorites;
+		ReadLineFile(GetTemplateFavoritesPath(), favorites);
+		for (TemplateEntry& entry : Templates) entry.IsFavorite = std::find(favorites.begin(), favorites.end(), entry.Name) != favorites.end();
+	}
+	b8 ChartTemplateWindow::SaveFavorites()
+	{
+		std::string content;
+		for (const TemplateEntry& entry : Templates) if (entry.IsFavorite) content += entry.Name + "\n";
+		return File::WriteAllBytes(GetTemplateFavoritesPath(), content);
+	}
+	void ChartTemplateWindow::RefreshCustomOrder()
+	{
+		CustomOrder.clear();
+		ReadLineFile(GetTemplateOrderPath(), CustomOrder);
+		CustomOrder.erase(std::remove_if(CustomOrder.begin(), CustomOrder.end(), [&](const std::string& name)
+		{
+			return std::find_if(Templates.begin(), Templates.end(), [&](const TemplateEntry& entry) { return entry.Name == name; }) == Templates.end();
+		}), CustomOrder.end());
+		std::vector<std::string> missing;
+		for (const TemplateEntry& entry : Templates)
+			if (std::find(CustomOrder.begin(), CustomOrder.end(), entry.Name) == CustomOrder.end()) missing.push_back(entry.Name);
+		std::sort(missing.begin(), missing.end(), [&](const std::string& left, const std::string& right)
+		{
+			const auto findTime = [&](const std::string& name) { const auto it = std::find_if(Templates.begin(), Templates.end(), [&](const TemplateEntry& e) { return e.Name == name; }); return it == Templates.end() ? 0 : it->LastWriteTime; };
+			return findTime(left) > findTime(right);
+		});
+		CustomOrder.insert(CustomOrder.end(), missing.begin(), missing.end());
+	}
+	b8 ChartTemplateWindow::SaveCustomOrder()
+	{
+		if (!EnsureTemplateDirectoryExists()) return false;
+		std::string content;
+		for (const std::string& name : CustomOrder) content += name + "\n";
+		return File::WriteAllBytes(GetTemplateOrderPath(), content);
+	}
+
+	void ChartTemplateWindow::RefreshCategories()
+	{
+		Categories.clear();
+		if (!EnsureTemplateDirectoryExists())
+			return;
+		auto content = File::ReadAllBytes(GetTemplateCategoriesPath());
+		if (content.Content == nullptr)
+			return;
+		std::string line;
+		for (char character : content.AsString())
+		{
+			if (character == '\n')
+			{
+				if (!line.empty() && line.back() == '\r') line.pop_back();
+				if (!line.empty() && std::find(Categories.begin(), Categories.end(), line) == Categories.end()) Categories.push_back(line);
+				line.clear();
+			}
+			else
+				line += character;
+		}
+		if (!line.empty() && std::find(Categories.begin(), Categories.end(), line) == Categories.end()) Categories.push_back(line);
+		std::sort(Categories.begin(), Categories.end());
+	}
+
+	b8 ChartTemplateWindow::SaveCategories()
+	{
+		if (!EnsureTemplateDirectoryExists())
+			return false;
+		std::string content;
+		for (const std::string& category : Categories)
+			content += category + "\n";
+		return File::WriteAllBytes(GetTemplateCategoriesPath(), content);
+	}
+
+	void ChartTemplateWindow::DrawGui()
+	{
+		if (!HasLoadedTemplates)
+			RefreshTemplates();
+
+		if (Gui::CollapsingHeader(UI_Str("TEMPLATE_SAVE_SECTION")))
+		{
+			Gui::TextUnformatted(UI_Str("TEMPLATE_NAME"));
+			Gui::SetNextItemWidth(-1.0f);
+			Gui::InputTextWithHint("##TemplateName", UI_Str("TEMPLATE_NAME_HINT"), &TemplateName);
+			Gui::TextUnformatted(UI_Str("TEMPLATE_CATEGORY"));
+			if (Gui::BeginCombo("##TemplateCategory", TemplateCategory.empty() ? UI_Str("TEMPLATE_NO_CATEGORY") : TemplateCategory.c_str(), ImGuiComboFlags_None))
+			{
+				if (Gui::Selectable(UI_Str("TEMPLATE_NO_CATEGORY"), TemplateCategory.empty())) TemplateCategory.clear();
+				for (const std::string& category : Categories)
+					if (Gui::Selectable(category.c_str(), TemplateCategory == category)) TemplateCategory = category;
+				Gui::EndCombo();
+			}
+			Gui::SameLine();
+			if (Gui::Button(UI_Str("TEMPLATE_REGISTER_CATEGORY")))
+				OpenCategoryRegistrationPopup = true;
+			Gui::TextUnformatted(UI_Str("TEMPLATE_MEMO"));
+			Gui::InputTextMultilineWithHint("##TemplateMemo", UI_Str("TEMPLATE_MEMO_HINT"), &Memo, vec2(-1.0f, Gui::GetFrameHeight() * 4.0f));
+
+			if (Gui::Button(UI_Str("TEMPLATE_SAVE_CLIPBOARD")))
+			{
+				const std::string normalizedName = NormalizeTemplateName(TemplateName);
+				const std::string clipboardText = std::string(Gui::GetClipboardTextView());
+				if (!IsValidTemplateName(normalizedName))
+					StatusMessage = UI_Str("TEMPLATE_INVALID_NAME");
+				else if (clipboardText.empty())
+					StatusMessage = UI_Str("TEMPLATE_EMPTY_CLIPBOARD");
+				else if (!EnsureTemplateDirectoryExists())
+					StatusMessage = UI_Str("TEMPLATE_DIRECTORY_FAILED");
+				else
+				{
+					PendingFilePath = GetTemplateDirectoryPath() + "/" + normalizedName + ".txt";
+					PendingFileContent = SerializeTemplate(TemplateCategory, Memo, clipboardText);
+					if (File::Exists(PendingFilePath))
+						OpenOverwritePopup = true;
+					else if (File::WriteAllBytes(PendingFilePath, PendingFileContent))
+					{
+						StatusMessage = UI_Str("TEMPLATE_SAVED");
+						TemplateName.clear();
+						TemplateCategory.clear();
+						Memo.clear();
+						RefreshTemplates();
+					}
+					else
+						StatusMessage = UI_Str("TEMPLATE_SAVE_FAILED");
+				}
+			}
+		}
+
+		if (!StatusMessage.empty())
+			Gui::TextWrapped("%s", StatusMessage.c_str());
+
+		if (Gui::CollapsingHeader(UI_Str("TEMPLATE_RECALL_SECTION"), ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			std::vector<std::string> categories;
+			for (const TemplateEntry& entry : Templates)
+				if (!entry.Category.empty() && std::find(categories.begin(), categories.end(), entry.Category) == categories.end())
+					categories.push_back(entry.Category);
+			std::sort(categories.begin(), categories.end());
+			Gui::Text("%s:", UI_Str("TEMPLATE_CATEGORY"));
+			Gui::SameLine();
+			Gui::SetNextItemWidth(GuiScale(180.0f));
+			if (Gui::BeginCombo("##TemplateCategoryFilter", CategoryFilter.empty() ? UI_Str("TEMPLATE_ALL_CATEGORIES") : CategoryFilter.c_str(), ImGuiComboFlags_None))
+			{
+				if (Gui::Selectable(UI_Str("TEMPLATE_ALL_CATEGORIES"), CategoryFilter.empty()))
+					CategoryFilter.clear();
+				for (const std::string& category : categories)
+					if (Gui::Selectable(category.c_str(), CategoryFilter == category))
+						CategoryFilter = category;
+				Gui::EndCombo();
+			}
+			Gui::Text("%s:", UI_Str("TEMPLATE_SORT"));
+			Gui::SameLine();
+			Gui::SetNextItemWidth(GuiScale(180.0f));
+			const char* sortLabel = SortMode == TemplateSortMode::Custom ? UI_Str("TEMPLATE_SORT_CUSTOM") : SortMode == TemplateSortMode::Name ? UI_Str("TEMPLATE_SORT_NAME") : UI_Str("TEMPLATE_SORT_UPDATED");
+			if (Gui::BeginCombo("##TemplateSort", sortLabel, ImGuiComboFlags_None))
+			{
+				if (Gui::Selectable(UI_Str("TEMPLATE_SORT_CUSTOM"), SortMode == TemplateSortMode::Custom)) { SortMode = TemplateSortMode::Custom; RefreshTemplates(); }
+				if (Gui::Selectable(UI_Str("TEMPLATE_SORT_NAME"), SortMode == TemplateSortMode::Name)) { SortMode = TemplateSortMode::Name; RefreshTemplates(); }
+				if (Gui::Selectable(UI_Str("TEMPLATE_SORT_UPDATED"), SortMode == TemplateSortMode::Updated)) { SortMode = TemplateSortMode::Updated; RefreshTemplates(); }
+				Gui::EndCombo();
+			}
+			if (Gui::Button(UI_Str("TEMPLATE_REFRESH")))
+				RefreshTemplates();
+			Gui::TextUnformatted(UI_Str("TEMPLATE_CLICK_HINT"));
+			if (Templates.empty())
+				Gui::TextDisabled("%s", UI_Str("TEMPLATE_EMPTY_LIST"));
+			else if (Gui::BeginTable("TemplatesTable", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY, Gui::GetContentRegionAvail()))
+			{
+				Gui::TableSetupColumn(UI_Str("TEMPLATE_NAME"), ImGuiTableColumnFlags_WidthFixed, GuiScale(180.0f));
+				Gui::TableSetupColumn(UI_Str("TEMPLATE_MEMO"), ImGuiTableColumnFlags_WidthStretch);
+				Gui::TableHeadersRow();
+				for (size_t templateIndex = 0; templateIndex < Templates.size(); ++templateIndex)
+				{
+					const TemplateEntry& entry = Templates[templateIndex];
+					if (!CategoryFilter.empty() && entry.Category != CategoryFilter)
+						continue;
+					Gui::PushID(entry.FilePath.c_str());
+					Gui::TableNextRow();
+        if (entry.IsFavorite)
+            Gui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(190, 135, 25, 190));
+					Gui::TableSetColumnIndex(0);
+					const b8 clicked = Gui::Selectable(entry.Name.c_str(), false, ImGuiSelectableFlags_SpanAllColumns | (!entry.IsValid ? ImGuiSelectableFlags_Disabled : 0));
+					if (SortMode == TemplateSortMode::Custom && Gui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+					{
+						const i32 source = static_cast<i32>(templateIndex);
+						Gui::SetDragDropPayload("PEEPO_TEMPLATE_INDEX", &source, sizeof(source));
+						Gui::TextUnformatted(entry.Name.c_str());
+						Gui::EndDragDropSource();
+					}
+					if (SortMode == TemplateSortMode::Custom && Gui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* payload = Gui::AcceptDragDropPayload("PEEPO_TEMPLATE_INDEX"); payload != nullptr && payload->DataSize == sizeof(i32))
+						{
+							PendingDragSource = *static_cast<const i32*>(payload->Data);
+							PendingDragTarget = static_cast<i32>(templateIndex);
+						}
+						Gui::EndDragDropTarget();
+					}
+					if (Gui::BeginPopupContextItem("TemplateContextMenu"))
+					{
+						if (Gui::MenuItem(UI_Str("TEMPLATE_CHANGE_CATEGORY"), nullptr, false, entry.IsValid))
+						{
+							PendingTemplateIndex = static_cast<i32>(templateIndex);
+							PendingCategory = entry.Category;
+							OpenCategoryPopup = true;
+						}
+						if (Gui::MenuItem(entry.IsFavorite ? UI_Str("TEMPLATE_FAVORITE_REMOVE") : UI_Str("TEMPLATE_FAVORITE_ADD")))
+						{
+							Templates[templateIndex].IsFavorite = !Templates[templateIndex].IsFavorite;
+							SaveFavorites();
+							RefreshAfterFavoriteChange = true;
+						}
+						if (Gui::MenuItem(UI_Str("TEMPLATE_DELETE")))
+						{
+							PendingTemplateIndex = static_cast<i32>(templateIndex);
+							OpenDeletePopup = true;
+						}
+						Gui::EndPopup();
+					}
+					Gui::TableSetColumnIndex(1);
+					Gui::TextUnformatted(entry.IsValid ? entry.Memo.c_str() : UI_Str("TEMPLATE_INVALID_FILE"));
+					if (clicked)
+					{
+						Gui::SetClipboardText(entry.ClipboardText.c_str());
+						StatusMessage = std::string(UI_Str("TEMPLATE_COPIED")) + " " + entry.Name;
+					}
+					Gui::PopID();
+				}
+				Gui::EndTable();
+			}
+			if (PendingDragSource >= 0 && PendingDragTarget >= 0 && PendingDragSource != PendingDragTarget && PendingDragSource < static_cast<i32>(Templates.size()) && PendingDragTarget < static_cast<i32>(Templates.size()))
+			{
+				const std::string sourceName = Templates[PendingDragSource].Name;
+				const std::string targetName = Templates[PendingDragTarget].Name;
+				auto sourceIt = std::find(CustomOrder.begin(), CustomOrder.end(), sourceName);
+				auto targetIt = std::find(CustomOrder.begin(), CustomOrder.end(), targetName);
+				if (sourceIt != CustomOrder.end() && targetIt != CustomOrder.end())
+				{
+					const std::string movedName = *sourceIt;
+					CustomOrder.erase(sourceIt);
+					targetIt = std::find(CustomOrder.begin(), CustomOrder.end(), targetName);
+					CustomOrder.insert(targetIt, movedName);
+					SaveCustomOrder();
+					RefreshTemplates();
+				}
+				PendingDragSource = PendingDragTarget = -1;
+			}
+			if (RefreshAfterFavoriteChange)
+			{
+				RefreshTemplates();
+				RefreshAfterFavoriteChange = false;
+			}
+		}
+
+		if (OpenOverwritePopup)
+		{
+			Gui::OpenPopup(UI_Str("TEMPLATE_OVERWRITE_TITLE"));
+			OpenOverwritePopup = false;
+		}
+		if (Gui::BeginPopupModal(UI_Str("TEMPLATE_OVERWRITE_TITLE"), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+		{
+			Gui::TextWrapped("%s", UI_Str("TEMPLATE_OVERWRITE_PROMPT"));
+			if (Gui::Button(UI_Str("TEMPLATE_OVERWRITE")))
+			{
+				if (File::WriteAllBytes(PendingFilePath, PendingFileContent))
+				{
+					StatusMessage = UI_Str("TEMPLATE_SAVED");
+					TemplateName.clear();
+					TemplateCategory.clear();
+					Memo.clear();
+					RefreshTemplates();
+				}
+				else
+					StatusMessage = UI_Str("TEMPLATE_SAVE_FAILED");
+				Gui::CloseCurrentPopup();
+			}
+			Gui::SameLine();
+			if (Gui::Button(UI_Str("ACT_MSGBOX_CANCEL")))
+				Gui::CloseCurrentPopup();
+			Gui::EndPopup();
+		}
+		if (OpenCategoryPopup)
+		{
+			Gui::OpenPopup(UI_Str("TEMPLATE_CHANGE_CATEGORY_TITLE"));
+			OpenCategoryPopup = false;
+		}
+		if (Gui::BeginPopupModal(UI_Str("TEMPLATE_CHANGE_CATEGORY_TITLE"), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+		{
+			Gui::TextUnformatted(UI_Str("TEMPLATE_CATEGORY"));
+			if (Gui::BeginCombo("##TemplatePendingCategory", PendingCategory.empty() ? UI_Str("TEMPLATE_NO_CATEGORY") : PendingCategory.c_str(), ImGuiComboFlags_None))
+			{
+				for (const std::string& category : Categories)
+					if (Gui::Selectable(category.c_str(), PendingCategory == category)) PendingCategory = category;
+				Gui::EndCombo();
+			}
+			if (Gui::Button(UI_Str("TEMPLATE_SAVE_CATEGORY")))
+			{
+				if (PendingTemplateIndex >= 0 && PendingTemplateIndex < static_cast<i32>(Templates.size()))
+				{
+					TemplateEntry& entry = Templates[PendingTemplateIndex];
+					if (File::WriteAllBytes(entry.FilePath, SerializeTemplate(PendingCategory, entry.Memo, entry.ClipboardText)))
+						StatusMessage = UI_Str("TEMPLATE_CATEGORY_CHANGED");
+					else
+						StatusMessage = UI_Str("TEMPLATE_SAVE_FAILED");
+					RefreshTemplates();
+				}
+				Gui::CloseCurrentPopup();
+			}
+			Gui::SameLine();
+			if (Gui::Button(UI_Str("ACT_MSGBOX_CANCEL")))
+				Gui::CloseCurrentPopup();
+			Gui::EndPopup();
+		}
+		if (OpenCategoryRegistrationPopup)
+		{
+			Gui::OpenPopup(UI_Str("TEMPLATE_REGISTER_CATEGORY_TITLE"));
+			OpenCategoryRegistrationPopup = false;
+		}
+		if (Gui::BeginPopupModal(UI_Str("TEMPLATE_REGISTER_CATEGORY_TITLE"), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+		{
+			Gui::InputTextWithHint("##TemplateNewCategory", UI_Str("TEMPLATE_CATEGORY_HINT"), &NewCategory);
+			if (Gui::Button(UI_Str("TEMPLATE_REGISTER_CATEGORY")))
+			{
+				if (!NewCategory.empty() && std::find(Categories.begin(), Categories.end(), NewCategory) == Categories.end())
+				{
+					Categories.push_back(NewCategory);
+					std::sort(Categories.begin(), Categories.end());
+					SaveCategories();
+					TemplateCategory = NewCategory;
+					StatusMessage = UI_Str("TEMPLATE_CATEGORY_REGISTERED");
+					NewCategory.clear();
+				}
+				Gui::CloseCurrentPopup();
+			}
+			Gui::SameLine();
+			if (Gui::Button(UI_Str("ACT_MSGBOX_CANCEL"))) Gui::CloseCurrentPopup();
+			Gui::EndPopup();
+		}
+		if (OpenDeletePopup)
+		{
+			Gui::OpenPopup(UI_Str("TEMPLATE_DELETE_TITLE"));
+			OpenDeletePopup = false;
+		}
+		if (Gui::BeginPopupModal(UI_Str("TEMPLATE_DELETE_TITLE"), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+		{
+			Gui::TextWrapped("%s", UI_Str("TEMPLATE_DELETE_PROMPT"));
+			if (Gui::Button(UI_Str("TEMPLATE_DELETE")))
+			{
+				if (PendingTemplateIndex >= 0 && PendingTemplateIndex < static_cast<i32>(Templates.size()))
+				{
+					if (std::filesystem::remove(std::filesystem::u8path(Templates[PendingTemplateIndex].FilePath)))
+						StatusMessage = UI_Str("TEMPLATE_DELETED");
+					else
+						StatusMessage = UI_Str("TEMPLATE_DELETE_FAILED");
+					RefreshTemplates();
+				}
+				Gui::CloseCurrentPopup();
+			}
+			Gui::SameLine();
+			if (Gui::Button(UI_Str("ACT_MSGBOX_CANCEL")))
+				Gui::CloseCurrentPopup();
+			Gui::EndPopup();
+		}
+	}
+
 	static b8 GuiDragLabelScalar(std::string_view label, ImGuiDataType dataType, void* inOutValue, f32 speed = 1.0f, const void* min = nullptr, const void* max = nullptr, ImGuiSliderFlags flags = ImGuiSliderFlags_None)
 	{
 		b8 valueChanged = false;
@@ -1623,6 +2186,12 @@ namespace PeepoDrumKit
 		return res;
 	}
 
+	static b8 IsInsertEventAtSelectedItemsShortcutPressed(const MultiInputBinding& binding)
+	{
+		return Gui::IsItemHovered() && Gui::GetActiveID() == 0 &&
+			Gui::IsAnyPressed(binding, false);
+	}
+
 	auto GetRangeSelectToTimeTailButtonDrawer(const ChartContext& context, const ChartTimeline& timeline) {
 		return [&](Gui::InputScalarWithButtonsResult* result, auto type, MultiEditDataUnion* v)
 		{
@@ -3027,7 +3596,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::TempoChanges)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertTempoChangeAtSelectedItems))
 						timeline.ExecuteConvertSelectionToEvents<GenericList::TempoChanges>(context);
 					Gui::EndDisabled();
 
@@ -3079,7 +3648,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::SignatureChanges)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertTimeSignatureChangeAtSelectedItems))
 						timeline.ExecuteConvertSelectionToEvents<GenericList::SignatureChanges>(context);
 					Gui::EndDisabled();
 
@@ -3144,7 +3713,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(scrollChangesList)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertScrollChangeAtSelectedItems))
 					{
 						switch (context.ChartSelectedBranch)
 						{
@@ -3191,7 +3760,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::BarLineChanges)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertBarLineChangeAtSelectedItems))
 						timeline.ExecuteConvertSelectionToEvents<GenericList::BarLineChanges>(context);
 					Gui::EndDisabled();
 
@@ -3229,7 +3798,7 @@ namespace PeepoDrumKit
 
 						Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 						Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::ScrollType)]);
-						if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+						if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertScrollTypeAtSelectedItems))
 							timeline.ExecuteConvertSelectionToEvents<GenericList::ScrollType>(context);
 						Gui::EndDisabled();
 
@@ -3315,7 +3884,7 @@ namespace PeepoDrumKit
 
 						Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 						Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::JPOSScroll)]);
-						if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+						if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertJPOSScrollAtSelectedItems))
 							timeline.ExecuteConvertSelectionToEvents<GenericList::JPOSScroll>(context);
 						Gui::EndDisabled();
 
@@ -3403,7 +3972,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::Sudden)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertSuddenAtSelectedItems))
 						timeline.ExecuteConvertSelectionToEvents<GenericList::Sudden>(context);
 					Gui::EndDisabled();
 
@@ -3434,7 +4003,7 @@ namespace PeepoDrumKit
 
 					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 					Gui::BeginDisabled(!isAnyItemNotInListSelected[EnumToIndex(GenericList::GoGoRanges)]);
-					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+					if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertGoGoRangeAtSelectedItems))
 						timeline.ExecuteConvertSelectionToEvents<GenericList::GoGoRanges>(context);
 					Gui::EndDisabled();
 
@@ -3600,7 +4169,7 @@ namespace PeepoDrumKit
 			Gui::SetNextItemWidth(-1.0f);
 			Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
 			Gui::BeginDisabled(!isAnyItemOtherThanLyricsSelected);
-			if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }))
+			if (SpriteButton(UI_WindowName("ACT_EVENT_INSERT_AT_SELECTED_ITEMS"), context, SprID::Timeline_Icon_InsertAtSelectedItems, { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || IsInsertEventAtSelectedItemsShortcutPressed(*Settings.Input.Timeline_InsertLyricAtSelectedItems))
 				timeline.ExecuteConvertSelectionToEvents<GenericList::Lyrics>(context);
 			Gui::EndDisabled();
 

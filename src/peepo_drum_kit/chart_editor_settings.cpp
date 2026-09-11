@@ -289,8 +289,11 @@ namespace PeepoDrumKit
 				else if (it.Key == "show_window_test_menu") { if (!BoolFromString(in, out.LastSession.ShowWindow_TestMenu)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_help") { if (!BoolFromString(in, out.LastSession.ShowWindow_Help)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_update_notes") { if (!BoolFromString(in, out.LastSession.ShowWindow_UpdateNotes)) return parser.Error_InvalidBool(); }
+				else if (it.Key == "show_window_template") { if (!BoolFromString(in, out.LastSession.ShowWindow_Template)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_chart_stats") { if (!BoolFromString(in, out.LastSession.ShowWindow_ChartStats)) return parser.Error_InvalidBool(); }
+				else if (it.Key == "chart_stats_font_scale") { if (f32 v = out.LastSession.ChartStatsFontScale; ASCII::TryParse(in, v)) out.LastSession.ChartStatsFontScale = Clamp(v, 0.5f, 2.0f); else return parser.Error_InvalidFloat(); }
 				else if (it.Key == "show_window_chart_branches") { if (!BoolFromString(in, out.LastSession.ShowWindow_ChartBranches)) return parser.Error_InvalidBool(); }
+				else if (it.Key == "show_window_lyrics") { if (!BoolFromString(in, out.LastSession.ShowWindow_Lyrics)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_settings") { if (!BoolFromString(in, out.LastSession.ShowWindow_Settings)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_audio_test") { if (!BoolFromString(in, out.LastSession.ShowWindow_AudioTest)) return parser.Error_InvalidBool(); }
 				else if (it.Key == "show_window_tja_import_test") { if (!BoolFromString(in, out.LastSession.ShowWindow_TJAImportTest)) return parser.Error_InvalidBool(); }
@@ -331,8 +334,11 @@ namespace PeepoDrumKit
 		writer.LineKeyValue_Str("show_window_test_menu", BoolToString(in.LastSession.ShowWindow_TestMenu));
 		writer.LineKeyValue_Str("show_window_help", BoolToString(in.LastSession.ShowWindow_Help));
 		writer.LineKeyValue_Str("show_window_update_notes", BoolToString(in.LastSession.ShowWindow_UpdateNotes));
+		writer.LineKeyValue_Str("show_window_template", BoolToString(in.LastSession.ShowWindow_Template));
 		writer.LineKeyValue_Str("show_window_chart_stats", BoolToString(in.LastSession.ShowWindow_ChartStats));
+		writer.LineKeyValue_F32("chart_stats_font_scale", in.LastSession.ChartStatsFontScale);
 		writer.LineKeyValue_Str("show_window_chart_branches", BoolToString(in.LastSession.ShowWindow_ChartBranches));
+		writer.LineKeyValue_Str("show_window_lyrics", BoolToString(in.LastSession.ShowWindow_Lyrics));
 		writer.LineKeyValue_Str("show_window_settings", BoolToString(in.LastSession.ShowWindow_Settings));
 		writer.LineKeyValue_Str("show_window_audio_test", BoolToString(in.LastSession.ShowWindow_AudioTest));
 		writer.LineKeyValue_Str("show_window_tja_import_test", BoolToString(in.LastSession.ShowWindow_TJAImportTest));
@@ -507,7 +513,12 @@ namespace PeepoDrumKit
 			X(Input.Editor_OpenHelp, "editor_open_help");
 			X(Input.Editor_OpenUpdateNotes, "editor_open_update_notes");
 			X(Input.Editor_OpenChartStats, "editor_open_chart_stats");
+			X(Input.Editor_OpenLyrics, "editor_open_lyrics");
 			X(Input.Editor_OpenSettings, "editor_open_settings");
+			X(Input.Editor_OpenTemplate, "editor_open_template");
+			X(Input.Editor_OpenChartBranches, "editor_open_chart_branches");
+			X(Input.Editor_IncreaseMasterVolume10, "editor_increase_master_volume_10");
+			X(Input.Editor_DecreaseMasterVolume10, "editor_decrease_master_volume_10");
 			X(Input.Editor_ChartNew, "editor_chart_new");
 			X(Input.Editor_ChartOpen, "editor_chart_open");
 			X(Input.Editor_ChartOpenDirectory, "editor_chart_open_directory");
@@ -542,6 +553,15 @@ namespace PeepoDrumKit
 			X(Input.Timeline_SelectItemPattern_CustomD, "timeline_select_item_pattern_custom_d");
 			X(Input.Timeline_SelectItemPattern_CustomE, "timeline_select_item_pattern_custom_e");
 			X(Input.Timeline_SelectItemPattern_CustomF, "timeline_select_item_pattern_custom_f");
+			X(Input.Timeline_InsertTempoChangeAtSelectedItems, "timeline_insert_tempo_change_at_selected_items");
+			X(Input.Timeline_InsertTimeSignatureChangeAtSelectedItems, "timeline_insert_time_signature_change_at_selected_items");
+			X(Input.Timeline_InsertScrollChangeAtSelectedItems, "timeline_insert_scroll_change_at_selected_items");
+			X(Input.Timeline_InsertBarLineChangeAtSelectedItems, "timeline_insert_bar_line_change_at_selected_items");
+			X(Input.Timeline_InsertScrollTypeAtSelectedItems, "timeline_insert_scroll_type_at_selected_items");
+			X(Input.Timeline_InsertJPOSScrollAtSelectedItems, "timeline_insert_jpos_scroll_at_selected_items");
+			X(Input.Timeline_InsertSuddenAtSelectedItems, "timeline_insert_sudden_at_selected_items");
+			X(Input.Timeline_InsertGoGoRangeAtSelectedItems, "timeline_insert_gogo_range_at_selected_items");
+			X(Input.Timeline_InsertLyricAtSelectedItems, "timeline_insert_lyric_at_selected_items");
 			X(Input.Timeline_ConvertSelectionToScrollChanges, "timeline_convert_selection_to_scroll_changes");
 			X(Input.Timeline_FlipNoteType, "timeline_flip_note_type");
 			X(Input.Timeline_ToggleNoteSize, "timeline_toggle_note_size");

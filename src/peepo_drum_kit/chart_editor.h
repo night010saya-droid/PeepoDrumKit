@@ -93,6 +93,7 @@ namespace PeepoDrumKit
 		b8 focusHelpWindowNextFrame = false;
 		b8 focusUpdateNotesWindowNextFrame = false;
 		b8 focusChartStatsWindowNextFrame = false;
+		b8 focusLyricsWindowNextFrame = false;
 		b8 focusSettingsWindowNextFrame = false;
 
 		ChartHelpWindow helpWindow = {};
