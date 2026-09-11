@@ -443,7 +443,10 @@ namespace PeepoDrumKit
 				}
 
 				Gui::Separator();
+				Gui::MenuItem(UI_Str("TAB_TEMPLATE"), nullptr, &PersistentApp.LastSession.ShowWindow_Template);
 				Gui::MenuItem(UI_Str("TAB_CHART_BRANCHES"), nullptr, &PersistentApp.LastSession.ShowWindow_ChartBranches);
+				if (Gui::MenuItem(UI_Str("TAB_LYRICS"), ToShortcutString(*Settings.Input.Editor_OpenLyrics).Data, &PersistentApp.LastSession.ShowWindow_Lyrics))
+					focusLyricsWindowNextFrame = true;
 				if (Gui::MenuItem(UI_Str("TAB_CHART_STATS"), ToShortcutString(*Settings.Input.Editor_OpenChartStats).Data)) { PersistentApp.LastSession.ShowWindow_ChartStats = focusChartStatsWindowNextFrame = true; }
 				if (Gui::MenuItem(UI_Str("TAB_SETTINGS"), ToShortcutString(*Settings.Input.Editor_OpenSettings).Data)) { PersistentApp.LastSession.ShowWindow_Settings = focusSettingsWindowNextFrame = true; }
 
@@ -906,7 +909,6 @@ namespace PeepoDrumKit
 					Audio::Engine.OpenStartStream();
 			}
 		}
-
 		// NOTE: Apply volume
 		{
 			context.SongVoice.SetVolume(context.Chart.SongVolume);
@@ -914,7 +916,6 @@ namespace PeepoDrumKit
 			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::Balloon, *Settings.Audio.BalloonVolume);
 			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::Metronome, *Settings.Audio.MetronomeVolume);
 		}
-
 		// NOTE: Drag and drop handling
 		for (const std::string& droppedFilePath : ApplicationHost::GlobalState.FilePathsDroppedThisFrame)
 		{
@@ -922,12 +923,10 @@ namespace PeepoDrumKit
 			if (Path::HasAnyExtension(droppedFilePath, Audio::SupportedFileFormatExtensionsPacked)) { SetAndStartLoadingChartSongFileName(droppedFilePath, context.Undo); break; }
 			if (Path::HasAnyExtension(droppedFilePath, TJA::PreimageExtensions)) { SetAndStartLoadingSongJacketFileName(droppedFilePath, context.Undo); break; }
 		}
-
 		// NOTE: Global input bindings
 		{
 			const b8 noActiveID = (Gui::GetActiveID() == 0);
 			const b8 noOpenPopup = (Gui::GetCurrentContext()->OpenPopupStack.Size <= 0);
-
 			if (noActiveID)
 			{
 				const f32 guiScaleFactorToSetNextFrame = GuiScaleFactorToSetNextFrame;
@@ -946,7 +945,12 @@ namespace PeepoDrumKit
 				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenHelp, true)) PersistentApp.LastSession.ShowWindow_Help = focusHelpWindowNextFrame = true;
 				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenUpdateNotes, true)) PersistentApp.LastSession.ShowWindow_UpdateNotes = focusUpdateNotesWindowNextFrame = true;
 				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenChartStats, true)) PersistentApp.LastSession.ShowWindow_ChartStats = focusChartStatsWindowNextFrame = true;
+				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenLyrics, true)) PersistentApp.LastSession.ShowWindow_Lyrics = focusLyricsWindowNextFrame = true;
 				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenSettings, true)) PersistentApp.LastSession.ShowWindow_Settings = focusSettingsWindowNextFrame = true;
+				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenTemplate, false)) PersistentApp.LastSession.ShowWindow_Template = true;
+				if (Gui::IsAnyPressed(*Settings.Input.Editor_OpenChartBranches, false)) PersistentApp.LastSession.ShowWindow_ChartBranches = true;
+				if (Gui::IsAnyPressed(*Settings.Input.Editor_IncreaseMasterVolume10, false)) Settings_Mutable.Audio.MasterVolume.Value = Clamp(Settings_Mutable.Audio.MasterVolume.Value + 0.10f, Audio::AudioEngine::MinVolume, Audio::AudioEngine::MaxVolume);
+				if (Gui::IsAnyPressed(*Settings.Input.Editor_DecreaseMasterVolume10, false)) Settings_Mutable.Audio.MasterVolume.Value = Clamp(Settings_Mutable.Audio.MasterVolume.Value - 0.10f, Audio::AudioEngine::MinVolume, Audio::AudioEngine::MaxVolume);
 			}
 
 			if (noActiveID && noOpenPopup)
@@ -1011,6 +1015,15 @@ namespace PeepoDrumKit
 			Gui::End();
 		}
 
+		if (PersistentApp.LastSession.ShowWindow_Template)
+		{
+			static ChartTemplateWindow templateWindow = {};
+			if (Gui::Begin(UI_WindowName("TAB_TEMPLATE"), &PersistentApp.LastSession.ShowWindow_Template, ImGuiWindowFlags_None))
+			{
+				templateWindow.DrawGui();
+			}
+			Gui::End();
+		}
 		if (Gui::Begin(UI_WindowName("TAB_INSPECTOR"), nullptr, ImGuiWindowFlags_None))
 		{
 			chartInspectorWindow.DrawGui(context, timeline);
@@ -1029,11 +1042,15 @@ namespace PeepoDrumKit
 		}
 		Gui::End();
 
-		if (Gui::Begin(UI_WindowName("TAB_LYRICS"), nullptr, ImGuiWindowFlags_None))
+		if (PersistentApp.LastSession.ShowWindow_Lyrics)
 		{
-			lyricsWindow.DrawGui(context, timeline);
+			if (Gui::Begin(UI_WindowName("TAB_LYRICS"), &PersistentApp.LastSession.ShowWindow_Lyrics, ImGuiWindowFlags_None))
+			{
+				lyricsWindow.DrawGui(context, timeline);
+			}
+			if (focusLyricsWindowNextFrame) { focusLyricsWindowNextFrame = false; Gui::SetWindowFocus(); }
+			Gui::End();
 		}
-		Gui::End();
 
 		if (Gui::Begin(UI_WindowName("TAB_EVENTS"), nullptr, ImGuiWindowFlags_None))
 		{
@@ -1076,7 +1093,9 @@ namespace PeepoDrumKit
 		{
 			if (Gui::Begin(UI_WindowName("TAB_CHART_STATS"), &PersistentApp.LastSession.ShowWindow_ChartStats, ImGuiWindowFlags_None))
 			{
+				chartStatsWindow.FontScale = PersistentApp.LastSession.ChartStatsFontScale;
 				chartStatsWindow.DrawGui(context);
+				PersistentApp.LastSession.ChartStatsFontScale = chartStatsWindow.FontScale;
 			}
 			if (focusChartStatsWindowNextFrame) { focusChartStatsWindowNextFrame = false; Gui::SetWindowFocus(); }
 			Gui::End();

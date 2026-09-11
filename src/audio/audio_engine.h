@@ -128,7 +128,7 @@ namespace Audio
 		static constexpr f32 SoundGroupVolumeLimit = 2.0f;
 		static constexpr f32 MinPan = -1, MaxPan = 1;
 		static constexpr PanLaw PanLaw = PanLaw::db3;
-		static constexpr size_t MaxSoundGroups = 3;
+		static constexpr size_t MaxSoundGroups = 4;
 		static constexpr size_t MaxSimultaneousVoices = 128;
 		static constexpr size_t MaxLoadedSources = 256;
 

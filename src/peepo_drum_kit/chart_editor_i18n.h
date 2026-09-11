@@ -46,6 +46,50 @@ X("TAB_SETTINGS",									"Settings") \
 X("TAB_USAGE_GUIDE",								"Usage Guide") \
 X("TAB_UPDATE_NOTES",								"Update Notes") \
 X("TAB_CHART_STATS",								"Stats") \
+X("TAB_TEMPLATE",								"Templates") \
+X("TEMPLATE_SAVE_SECTION",						"Save") \
+X("TEMPLATE_RECALL_SECTION",					"Recall") \
+X("TEMPLATE_CATEGORY",							"Category") \
+X("TEMPLATE_CATEGORY_HINT",					"Enter a category") \
+X("TEMPLATE_NO_CATEGORY",					"No category") \
+X("TEMPLATE_REGISTER_CATEGORY",				"Register category") \
+X("TEMPLATE_REGISTER_CATEGORY_TITLE",	"Register Category") \
+X("TEMPLATE_CATEGORY_REGISTERED",			"Category registered.") \
+X("TEMPLATE_ALL_CATEGORIES",					"All categories") \
+X("TEMPLATE_SORT",								"Sort") \
+X("TEMPLATE_SORT_CUSTOM",						"Custom") \
+X("TEMPLATE_SORT_NAME",							"Name") \
+X("TEMPLATE_SORT_UPDATED",						"Updated") \
+X("TEMPLATE_FAVORITE_ADD",						"Add to favorites") \
+X("TEMPLATE_FAVORITE_REMOVE",					"Remove from favorites") \
+X("TEMPLATE_CHANGE_CATEGORY",					"Change category") \
+X("TEMPLATE_CHANGE_CATEGORY_TITLE",			"Change Template Category") \
+X("TEMPLATE_SAVE_CATEGORY",					"Save category") \
+X("TEMPLATE_CATEGORY_CHANGED",				"Template category changed.") \
+X("TEMPLATE_DELETE",							"Delete") \
+X("TEMPLATE_DELETE_TITLE",					"Delete Template") \
+X("TEMPLATE_DELETE_PROMPT",					"Delete this template?") \
+X("TEMPLATE_DELETED",						"Template deleted.") \
+X("TEMPLATE_DELETE_FAILED",					"Could not delete the template.") \
+X("TEMPLATE_NAME",								"Template Name") \
+X("TEMPLATE_NAME_HINT",							"Enter a template name") \
+X("TEMPLATE_MEMO",								"Memo") \
+X("TEMPLATE_MEMO_HINT",							"Optional notes about this template") \
+X("TEMPLATE_SAVE_CLIPBOARD",					"Save Clipboard") \
+X("TEMPLATE_REFRESH",							"Refresh") \
+X("TEMPLATE_CLICK_HINT",						"Click a template to copy its data to the clipboard.") \
+X("TEMPLATE_EMPTY_LIST",						"No templates saved.") \
+X("TEMPLATE_EMPTY_CLIPBOARD",					"The clipboard is empty.") \
+X("TEMPLATE_INVALID_NAME",						"Enter a valid Windows file name.") \
+X("TEMPLATE_INVALID_FILE",						"Invalid template file") \
+X("TEMPLATE_DIRECTORY_FAILED",					"Could not create the Template folder.") \
+X("TEMPLATE_REFRESH_FAILED",					"Could not read the Template folder.") \
+X("TEMPLATE_SAVE_FAILED",						"Could not save the template.") \
+X("TEMPLATE_SAVED",							"Template saved.") \
+X("TEMPLATE_COPIED",							"Copied to clipboard:") \
+X("TEMPLATE_OVERWRITE_TITLE",					"Overwrite Template") \
+X("TEMPLATE_OVERWRITE_PROMPT",					"A template with this name already exists. Overwrite it?") \
+X("TEMPLATE_OVERWRITE",							"Overwrite") \
 X("BRANCH_COMMAND_SECTION",						"Section") \
 X("BRANCH_COMMAND_START",							"Branch Start") \
 X("BRANCH_COMMAND_END",							"Branch End") \
