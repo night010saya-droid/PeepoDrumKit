@@ -128,6 +128,9 @@ namespace PeepoDrumKit
 			WithDefault<b8> IncludePeepoDrumKitComment = true;
 			WithDefault<f32> DrumrollPreviewRollsPerSecond = 8.0f;
 			WithDefault<b8> DisplayTimeInSongSpace = false;
+			WithDefault<b8> ShowForcedBranchButtons = true;
+			WithDefault<b8> TimelineShowBranchStartLines = true;
+			WithDefault<b8> TimelineShowBranchRangeBackground = true;
 			WithDefault<b8> TimelineScrollInvertMouseWheel = false;
 			WithDefault<f32> TimelineScrollDistancePerMouseWheelTick = 100.0f;
 			WithDefault<f32> TimelineScrollDistancePerMouseWheelTickFast = 250.0f;
